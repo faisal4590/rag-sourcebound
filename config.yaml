@@ -1,0 +1,108 @@
+# config.yaml - version 1 defaults
+abstain_text: "No information found"
+
+parse:
+  header_max_top_pt: 50
+  header_font_size_pt: 8
+  skip_pages: [1, 2, 3, 4, 5, 6, 7, 8, 12, 156, 232]
+
+structure:
+  line_tolerance_pt: 2
+  paragraph_gap_factor: 1.5
+  mono_fonts: ["JetBrainsMono", "IBMPlexMono"]
+
+clean:
+  rules_enabled: [nfc, nbsp, zero_width, whitespace, page_number_lines]
+
+chunk:
+  tokenizer: cl100k_base
+  target_tokens: 350
+  min_tokens: 120
+  max_tokens: 600
+  code_max_tokens: 900
+  overlap_paragraph_max_tokens: 80
+  parent_max_tokens: 2500
+
+enrich:
+  symbols_max: 40
+  contextual_summary: false      # Milestone 7
+  hypothetical_questions: 0      # Milestone 7
+
+embed:
+  model: BAAI/bge-m3
+  dim: 1024
+  batch_size: 32
+  sparse_model: Qdrant/bm25
+  cache_path: data/cache/embeddings.sqlite
+
+index:
+  qdrant_url: http://localhost:6333
+  alias: flp_chunks_current
+  keep_previous: 1
+
+verify:
+  min_chunks_per_page: 0.5
+  smoke_queries: eval/smoke_queries.jsonl
+
+api:
+  port: 8000
+  timeout_s: 20
+
+guard:
+  max_chars: 2000
+  rate_limit_per_min: 30
+
+query:
+  history_turns: 3
+  expansions: 3
+  smalltalk_policy: abstain      # abstain | greet
+  decompose: false
+  hyde: false
+  model: <small-model-name>
+
+retrieval:
+  top_k_dense: 30
+  top_k_sparse: 30
+  rrf_k: 60
+  top_k_fused: 30
+
+rerank:
+  model: BAAI/bge-reranker-v2-m3
+  top_n: 8
+  batch_size: 16
+
+gate:
+  tau_low: 0.20                  # recalibrate with Section 8.4
+  tau_pass: 0.35
+  tau_high: 0.60
+
+context:
+  max_tokens: 6000
+  max_blocks: 8
+  order: position                # position | sandwich
+
+gen:
+  model: <generator-model-name>
+  temperature: 0
+  max_output_tokens: 800
+  prompt_file: prompts/answer_v1.md
+  strict_prompt_file: prompts/answer_strict_v1.md
+
+output:
+  faithfulness_sample_rate: 0.2
+  code_verbatim: true
+  judge_model: <small-model-name>
+
+cache:
+  semantic_enabled: false        # Milestone 7
+  similarity_threshold: 0.97
+  ttl_hours: 168
+
+trace:
+  exporter_endpoint: http://localhost:6006/v1/traces
+  capture_content: true
+  retention_days: 30
+
+prices_usd_per_million_tokens:
+  <generator-model-name>: { input: 0.0, output: 0.0 }
+  <small-model-name>: { input: 0.0, output: 0.0 }

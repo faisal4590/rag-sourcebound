@@ -1,0 +1,10 @@
+{"query": "What is constructor property promotion?", "expected_chapter": 5}
+{"query": "How do readonly properties work?", "expected_chapter": 6}
+{"query": "How do I use named arguments?", "expected_chapter": 7}
+{"query": "How do I define an attribute class?", "expected_chapter": 8}
+{"query": "What are backed enums?", "expected_chapter": 9}
+{"query": "What is the difference between match and switch?", "expected_chapter": 13}
+{"query": "What does the never return type mean?", "expected_chapter": 3}
+{"query": "How does the JIT compiler work in PHP 8?", "expected_chapter": 21}
+{"query": "What are fibers?", "expected_chapter": 27}
+{"query": "What is new in PHP 8.2?", "expected_chapter": 30}
