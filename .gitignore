@@ -8,3 +8,4 @@ eval/runs/*
 !eval/runs/.gitkeep
 .pytest_cache/
 .ruff_cache/
+.local/

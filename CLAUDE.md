@@ -42,21 +42,25 @@ comment line that names its stage and spec section. No implementation exists yet
 ## Commands
 
 ```bash
-uv sync                      # or: pip install -e ".[dev]"
+uv sync --extra dev --extra local   # or: pip install -e ".[dev,local]"
 cp .env.example .env         # fill in one chat model key
 make up                      # docker compose: Qdrant :6333, Phoenix :6006
+make up-local                # same services without Docker: .local/qdrant binary + `phoenix serve`
+make status                  # both services answer?
+make down / make down-local
 make ingest                  # flp ingest -> Stages 1-8, prints verification report
 make serve                   # uvicorn flp_rag.api.app:app --reload --port 8000
 make test                    # pytest -q  (the "Done when" tests)
 make eval                    # flp eval -> harness, compares eval/baseline.json, exit 1 on regression
 make calibrate               # flp calibrate -> threshold sweep, spec 8.4
-make down
 ruff check src tests eval    # lint, line length 100, py312
 pytest tests/test_s04_chunk.py -q   # one stage's test
 flp ask "What is a readonly property?"
 ```
 
-Python 3.12 required. `uv` is installed at `~/.local/bin/uv`. No `.venv` exists yet.
+Python 3.12 required. `uv` is installed at `~/.local/bin/uv`. Docker is **not** installed on the dev
+machine, so `make up-local` is the working path. `.local/` (Qdrant binary, storage, Phoenix data,
+pid files) is gitignored. Run Python through `uv run ...`.
 
 ## Architecture
 

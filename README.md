@@ -8,8 +8,22 @@ The full specification is `docs/front-line-php-rag-spec.md`. The architecture fi
 ## Start here
 
 1. Copy `.env.example` to `.env`. Fill in one chat model key.
-2. Run `uv sync` (or `pip install -e ".[dev]"`). Then run `make up`.
-3. Do Milestone 0 from the spec, Section 11: one traced `hello` span visible at http://localhost:6006.
+2. Run `uv sync --extra dev` (or `pip install -e ".[dev]"`).
+3. Start Qdrant (:6333) and Phoenix (:6006). Pick one path:
+   - **Docker:** `make up`. Uses `docker-compose.yml`.
+   - **No Docker:** `uv sync --extra dev --extra local`, download the Qdrant binary once (below), then `make up-local`. Stop with `make down-local`.
+4. `make status` checks that both services answer.
+5. Do Milestone 0 from the spec, Section 11: one traced `hello` span visible at http://localhost:6006.
+
+### Qdrant binary for the no-Docker path
+
+```bash
+mkdir -p .local/qdrant && cd .local/qdrant
+curl -sSL -o q.tar.gz https://github.com/qdrant/qdrant/releases/download/v1.19.1/qdrant-aarch64-apple-darwin.tar.gz
+tar xzf q.tar.gz && rm q.tar.gz && ./qdrant --version
+```
+
+Pick the `x86_64` asset on an Intel Mac. `.local/` is gitignored. Qdrant storage lives in `.local/qdrant/storage`, Phoenix data in `.local/phoenix`.
 
 ## Layout
 
