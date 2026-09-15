@@ -2,11 +2,13 @@
 
 | Field | Value |
 |---|---|
-| Version | 1.0 |
-| Date | 2026-09-10 |
+| Version | 1.1 |
+| Date | 2026-09-14 |
 | Corpus | `front-line-php-revised-for-php-82.pdf` (Brent Roose, *Front Line PHP*, 324 PDF pages) |
 | Deliverable | A traced, evaluated question-answering system over one book |
 | Hard rule | If the book does not contain the answer, the system returns the exact text `No information found` |
+
+**Change log.** Version 1.1 (2026-09-14): LangGraph runs the online pipeline and LangChain components replace the custom provider interfaces. Changed sections: 3.3, 4.1, 4.2, 4.3, 7.3, Stage 12, Stage 13, Appendix D. All other sections are unchanged from version 1.0.
 
 ---
 
@@ -180,7 +182,7 @@ flowchart LR
 
 ### 3.3 Design rules that apply to every stage
 
-1. Every stage is one Python function with a typed input and a typed output (Section 10).
+1. Every stage is one Python function with a typed input and a typed output (Section 10). In the online pipeline, that function is one LangGraph node.
 2. Every stage opens one trace span with the name in its "Trace span" line (Section 7).
 3. Every stage reads its parameters from `config.yaml` only (Section 9). No constants in code.
 4. Every stage has a "Done when" test. The test is a script in `tests/`, not a manual check.
@@ -194,7 +196,11 @@ flowchart LR
 
 **Language: Python 3.12.** The book is about PHP, but the system is not PHP-specific. Python has the mature libraries for parsing, embeddings, vector stores, and OpenTelemetry. A PHP API layer is a possible later project.
 
-**No orchestration framework in the core.** Write each stage as a plain function. Use libraries only for leaf tasks: PDF parsing, embeddings, the vector store client, the reranker, and OpenTelemetry. Reason: you learn the internals, and the traces stay readable. A framework hides both.
+**LangGraph for the online pipeline.** Stages 9-18 form one `StateGraph`. Each stage is one node. The relevance gate (Stage 14) is a conditional edge with two exits, `pass` and `abstain`. The graph state is one typed dictionary (`RagState`) that carries the question, the candidates, the context, the answer, and the status.
+
+**LangChain components for leaf work.** LangChain packages supply the embeddings, the Qdrant vector store with hybrid search, the reranker, the chat models, and the prompts. They also supply structured JSON output. This keeps every model call behind one interface and gives automatic tracing (Section 7.3).
+
+**Own code for the offline pipeline and the gate.** Stages 1-4 are your own code. LangChain has no font-aware PDF parser and no splitter that keeps code blocks whole. Stage 4 ends with a conversion of chunks into LangChain `Document` objects. Stages 5-8 use the `Document` list. The gate (Stage 14) and the output checks (Stage 17) are plain functions, because their rules are the core of the abstain behavior and must stay readable.
 
 **Pinned model versions.** `config.yaml` names the exact embedding model, reranker model, and generator model. The ingestion writes these names into the index manifest. Every trace carries them.
 
@@ -202,17 +208,19 @@ flowchart LR
 
 | Concern | Recommended | Alternative | Reason |
 |---|---|---|---|
+| Pipeline graph | `langgraph` | Own `pipeline.py` | Nodes, typed state, conditional edge for the gate, streaming |
+| LangChain base classes | `langchain-core` | - | `Document`, `Runnable`, `BaseChatModel`, `Embeddings`, prompts |
 | PDF parsing | pdfplumber | PyMuPDF | Character-level font names and positions. Used for the facts in Section 2 |
 | Tokenizer for chunk sizes | tiktoken `cl100k_base` | The tokenizer of the embedding model | Fast and deterministic |
-| Dense embedding model | `BAAI/bge-m3` (local, 1024 dimensions) | `text-embedding-3-small` (hosted) | Free, strong retrieval scores, runs on a CPU for 300 chunks |
-| Sparse retrieval | BM25 sparse vectors in Qdrant (`fastembed`, `Qdrant/bm25`) | PostgreSQL `tsvector` | Exact token matching for PHP keywords |
-| Vector store | Qdrant in Docker | PostgreSQL with pgvector | Named dense and sparse vectors, payload filters, hybrid query API |
+| Dense embedding model | `BAAI/bge-m3` through `langchain-huggingface` (local, 1024 dimensions) | `text-embedding-3-small` through `langchain-openai` | Free, strong retrieval scores, runs on a CPU for 300 chunks |
+| Sparse retrieval | `FastEmbedSparse("Qdrant/bm25")` from `langchain-qdrant` | PostgreSQL `tsvector` | Exact token matching for PHP keywords |
+| Vector store | Qdrant in Docker through `langchain-qdrant` `QdrantVectorStore`, `RetrievalMode.HYBRID` | PostgreSQL with pgvector | Named dense and sparse vectors, payload filters, hybrid search with RRF in one call |
 | Parent store and caches | SQLite | PostgreSQL | One file, no server |
-| Reranker | `BAAI/bge-reranker-v2-m3` (local) | Cohere Rerank (hosted) | Cross-encoder scores feed the abstain gate |
-| Generator model | A hosted chat model with JSON output and a 32k context window | A local model through Ollama (8B parameters or more) | Grounding quality. Keep the provider behind one interface |
+| Reranker | `BAAI/bge-reranker-v2-m3` as a `CrossEncoder` behind a `BaseDocumentCompressor` | Cohere Rerank through `langchain-cohere` | Cross-encoder scores feed the abstain gate |
+| Generator model | A hosted chat model through `langchain-anthropic` or `langchain-openai`, with `with_structured_output` | A local model through `langchain-ollama` (8B parameters or more) | Grounding quality. One `BaseChatModel` interface for every provider |
 | Small model for classification and judging | A cheap hosted model or a local 8B model | The generator model | Cost. Stage 11 and Stage 17 call it on most requests |
 | HTTP API | FastAPI | Flask | Async, typed, OpenTelemetry instrumentation exists |
-| Tracing | OpenTelemetry Python SDK, OTLP/HTTP exporter | - | Vendor-neutral. The backend is replaceable |
+| Tracing | OpenTelemetry Python SDK, `openinference-instrumentation-langchain`, `arize-phoenix-otel` | - | Vendor-neutral. Every LangChain and LangGraph run becomes a span with no extra code |
 | Trace backend | Arize Phoenix (local, one command) | Langfuse (Docker Compose) | RAG-oriented trace view. Evaluation scores attach to spans |
 | Logs | structlog with JSON output | Standard library logging with a JSON formatter | Trace ID correlation |
 | Evaluation | A custom harness with an LLM judge | RAGAS or DeepEval | You control the metrics and the thresholds |
@@ -221,15 +229,17 @@ flowchart LR
 
 ### 4.3 Provider interfaces
 
-Write three small interfaces. Each provider is one class behind them.
+Do not write provider interfaces. Use the LangChain base classes. One file, `models.py`, builds the concrete objects from `config.yaml`. No other file names a provider.
 
-| Interface | Methods | Implementations |
+| Role | LangChain base class | Concrete class from `config.yaml` |
 |---|---|---|
-| `Embedder` | `embed_passages(texts) -> vectors`, `embed_query(text) -> vector`, `model_name`, `dim` | `BgeM3Embedder`, `OpenAIEmbedder` |
-| `Reranker` | `score(query, texts) -> scores in [0, 1]`, `model_name` | `BgeReranker`, `CohereReranker` |
-| `ChatModel` | `complete(system, messages, json_schema=None, temperature=0) -> Completion`, `stream(...)`, `model_name`, `price_per_million_tokens` | One class per provider, plus `OllamaChat` |
+| Embeddings | `langchain_core.embeddings.Embeddings` | `HuggingFaceEmbeddings(model_name="BAAI/bge-m3")` or `OpenAIEmbeddings` |
+| Sparse embeddings | `langchain_qdrant.FastEmbedSparse` | `FastEmbedSparse(model_name="Qdrant/bm25")` |
+| Vector store | `langchain_qdrant.QdrantVectorStore` | `retrieval_mode=RetrievalMode.HYBRID`, `vector_name="dense"`, `sparse_vector_name="sparse_bm25"` |
+| Reranker | `langchain_core.documents.BaseDocumentCompressor` | Own subclass around `sentence_transformers.CrossEncoder`, or `CohereRerank` |
+| Chat model | `langchain_core.language_models.BaseChatModel` | `ChatAnthropic`, `ChatOpenAI`, or `ChatOllama` |
 
-A `Completion` carries the text, the input token count, the output token count, the finish reason, and the latency. The `llm.*` spans read these fields.
+`models.py` exposes three factories: `get_embeddings()`, `get_reranker()`, and `get_chat_model(role)`. The `role` is `generator`, `small`, or `judge`, and it selects the model name from `config.yaml`. Token counts and the finish reason come from `AIMessage.usage_metadata` and `response_metadata`. The `llm.*` spans read these fields through the instrumentor.
 
 
 ---
@@ -539,9 +549,9 @@ The context comes from the book and is trusted. The question comes from the user
 
 **Rules.**
 
-1. Dense: embed the standalone question with `Embedder.embed_query`. Query the `dense` vector. Take the top 30 by cosine.
-2. Sparse: query the `sparse_bm25` vector with the keyword variant and the standalone question. Take the top 30.
-3. Run steps 1 and 2 for every variant from Stage 11. Run them in parallel.
+1. Dense: call `QdrantVectorStore.similarity_search_with_score(question, k=30)` with `RetrievalMode.DENSE`. The store embeds the question with the same `Embeddings` object that Stage 6 used.
+2. Sparse: call the same store with `RetrievalMode.SPARSE` for the keyword variant and the standalone question. Take the top 30.
+3. Run steps 1 and 2 for every variant from Stage 11. Run them in parallel with `RunnableParallel`. Keep the two modes as separate calls, not one `HYBRID` call, because the trace needs `rag.overlap_ratio` and the per-retriever hit lists.
 4. Apply payload filters only from the explicit `filters` field of the request.
 5. Fuse all result lists with Reciprocal Rank Fusion, `k = 60`. Output the top 30 unique `chunk_id` values with `fused_score` and a provenance list (retriever and variant).
 6. If a candidate has a `code_group_id`, add its sibling pieces to the candidate list.
@@ -559,7 +569,7 @@ The context comes from the book and is trusted. The question comes from the user
 
 **Rules.**
 
-1. Score every pair of the standalone question and the candidate text (`chunk_header + display_text`). Use the 30 fused candidates.
+1. Wrap `sentence_transformers.CrossEncoder("BAAI/bge-reranker-v2-m3")` in a `BaseDocumentCompressor` subclass. Its `compress_documents(documents, query)` scores every pair of the standalone question and the candidate text (`chunk_header + display_text`). Use the 30 fused candidates.
 2. Convert each score to the range 0-1. For `bge-reranker`, apply a sigmoid to the logit. Cohere returns 0-1 already.
 3. Keep the top 8 by `rerank_score`. Record all 30 scores on the span. Section 8.4 uses them for calibration.
 4. If two candidates have a score difference below 0.01 and one matches `chapter_hint`, rank that one first.
@@ -726,11 +736,15 @@ Phoenix is one process: `pip install arize-phoenix` and `phoenix serve`. It stor
 
 ### 7.3 Implementation pattern
 
-One decorator does all span work. Business code never imports the tracer directly.
+Two mechanisms create spans. Business code imports the tracer in neither case.
+
+**Mechanism 1: the LangChain instrumentor.** `tracing.py` calls `LangChainInstrumentor().instrument()` once at start, after the Phoenix OTLP exporter is registered with `arize-phoenix-otel`. From then on, every LangGraph node, chat model call, retriever call, and compressor call becomes an OpenInference span. Each span gets the right `openinference.span.kind`, `input.value`, `output.value`, and `gen_ai.*` attributes. Name each node in `build.py` with the span name from Section 7.4, for example `graph.add_node("retrieval.hybrid", retrieve)`. The instrumentor uses the node name as the span name. The API opens the root span `rag.request` with the `@stage` decorator and runs the compiled graph inside it. The graph spans then become children of the root.
+
+**Mechanism 2: the `@stage` decorator.** It covers code that LangChain does not run. This means Stages 1-8, the gate (Stage 14), the citation and code checks (Stage 17), and the cache (Stage 19).
 
 ```python
-@stage("retrieval.dense", kind="RETRIEVER")
-def retrieve_dense(q: StandaloneQuery, cfg: RetrievalConfig) -> list[Candidate]:
+@stage("relevance.gate", kind="CHAIN")
+def gate(state: RagState, cfg: GateConfig) -> RagState:
     ...
 ```
 
@@ -742,7 +756,7 @@ The decorator:
 4. Records the exception and sets the span status to `ERROR` on failure. Then re-raises.
 5. Adds `rag.latency_ms`.
 
-When a value is not part of the output type, the stage adds it with `current_span().set_attribute(...)`.
+When a value is not part of the output type, the stage adds it with `current_span().set_attribute(...)`. Inside a LangGraph node, the same call adds `rag.*` attributes to the span that the instrumentor opened, so the two mechanisms produce one span tree.
 
 ### 7.4 Span tree of a request
 
@@ -1111,7 +1125,7 @@ Eight milestones. Each milestone ends with a visible result. Do not start the ne
 
 1. Create the repository with the layout in Appendix D. Create a Python 3.12 virtual environment.
 2. Run `docker run -p 6333:6333 qdrant/qdrant`. Run `pip install arize-phoenix` and `phoenix serve`.
-3. Write the `@stage` decorator and an OTLP exporter. Wrap one `hello()` function.
+3. Write the `@stage` decorator, register the Phoenix exporter, and call `LangChainInstrumentor().instrument()`. Wrap one `hello()` function.
 4. Run `python -m flp_rag.hello`. Open `http://localhost:6006` and find the trace.
 
 **Done when.** One trace with one span named `hello` is visible in Phoenix.
@@ -1374,20 +1388,41 @@ Question:
 ## Appendix D - Repository layout and Makefile targets
 
 ```text
-flp-rag/
-  config.yaml
-  Makefile
-  prompts/            answer_v1.md, answer_strict_v1.md, judge_faithfulness_v1.md, query_v1.md
-  src/flp_rag/
-    contracts.py      dataclasses from Section 10, each with to_attrs()
-    tracing.py        the @stage decorator, the OTLP exporter, the structlog processor
-    providers/        embedder.py, reranker.py, chat.py (one interface, several classes)
-    ingest/           s01_parse.py ... s08_verify.py, run.py
-    query/            s09_api.py ... s19_cache.py, pipeline.py
-    cli.py            flp ask "...", flp ingest, flp eval
-  data/               parsed/, blocks/, clean/, chunks/, parents/, enriched/, vectors/, index/, cache/
-  eval/               golden_v1.jsonl, smoke_queries.jsonl, baseline.json, runs/, harness.py
-  tests/              one test file per stage "Done when" line
+rag_php/
+├── README.md
+├── pyproject.toml               # dependencies, ruff, pytest configuration
+├── Makefile                     # up, ingest, serve, eval, test, calibrate
+├── config.yaml                  # all tunables (Section 9)
+├── .env.example                 # API keys only, never committed with values
+├── docker-compose.yml           # qdrant + phoenix
+├── docs/                        # this specification, the architecture figure
+├── prompts/                     # one file per version, hash = prompt_version
+│   ├── answer_v1.md
+│   ├── answer_strict_v1.md
+│   ├── judge_faithfulness_v1.md
+│   └── query_v1.md
+├── src/flp_rag/
+│   ├── settings.py              # loads config.yaml into pydantic models, computes config_hash
+│   ├── contracts.py             # Word, Block, Chunk, Parent, Candidate, Response, EvalCase
+│   ├── tracing.py               # Phoenix exporter, LangChainInstrumentor, @stage decorator, structlog processor
+│   ├── models.py                # factories: get_embeddings(), get_reranker(), get_chat_model(role)
+│   ├── ingest/                  # Stages 1-8, own code
+│   │   ├── s01_parse.py ... s05_enrich.py
+│   │   ├── s06_s07_index.py     # QdrantVectorStore.from_documents (hybrid), parent store, manifest
+│   │   ├── s08_verify.py
+│   │   └── run.py
+│   ├── graph/                   # Stages 9-18 as a LangGraph
+│   │   ├── state.py             # RagState TypedDict
+│   │   ├── build.py             # StateGraph wiring, conditional edge at the gate, compile()
+│   │   ├── cache.py             # Stage 19, Milestone 7
+│   │   └── nodes/               # one file per stage: guard_input, understand, retrieve, rerank,
+│   │                            #   gate, assemble, generate, check_output, respond
+│   ├── stores/                  # parent_store.py, embedding_cache.py (SQLite)
+│   ├── api/                     # app.py (FastAPI: /ask, /feedback, /health), schemas.py
+│   └── cli.py                   # flp ask, flp ingest, flp eval, flp calibrate
+├── eval/                        # golden_v1.jsonl, smoke_queries.jsonl, baseline.json, harness.py, calibrate.py, runs/
+├── data/                        # raw/, parsed/, blocks/, clean/, chunks/, parents/, enriched/, vectors/, index/, cache/
+└── tests/                       # one test file per "Done when" line, fixtures/
 ```
 
 | Target | Action |
