@@ -102,6 +102,8 @@ trace:
   exporter_endpoint: http://localhost:6006/v1/traces
   capture_content: true
   retention_days: 30
+  content_max_chars: 20000       # input.value / output.value cap per span
+  attr_string_max_chars: 1000    # string attribute cap, spec 7.6
 
 prices_usd_per_million_tokens:
   <generator-model-name>: { input: 0.0, output: 0.0 }
