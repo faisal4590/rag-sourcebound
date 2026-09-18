@@ -9,3 +9,4 @@ eval/runs/*
 .pytest_cache/
 .ruff_cache/
 .local/
+.idea/
