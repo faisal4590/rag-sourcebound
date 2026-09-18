@@ -10,3 +10,4 @@ eval/runs/*
 .ruff_cache/
 .local/
 .idea/
+uv.lock
