@@ -12,8 +12,10 @@ The full specification is `docs/front-line-php-rag-spec.md`. It is the source of
 relevant stage section before writing or changing a stage. Each stage there follows one template:
 Purpose, Input and output, Rules, Configuration, Trace span, Done when.
 
-**Current state:** scaffold only. Every Python file under `src/`, `eval/`, and `tests/` holds one
-comment line that names its stage and spec section. No implementation exists yet. Milestone 0 is next.
+**Current state:** Milestone 0 in progress. Implemented: `tracing.py` (the `@stage` decorator,
+OTLP exporter, structlog processor) and `settings.py` (loads `config.yaml`, types the `trace`
+section, computes `config_hash`, rejects secret-looking keys). Every other Python file under `src/`,
+`eval/`, and `tests/` still holds one comment line that names its stage and spec section.
 
 ## Hard rules (from the spec)
 
