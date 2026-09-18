@@ -81,8 +81,14 @@ def configure_tracing(
     )
     provider = TracerProvider(resource=resource)
     if exporter is None:
-        exporter = OTLPSpanExporter(endpoint=settings.trace.exporter_endpoint)
-        provider.add_span_processor(BatchSpanProcessor(exporter))
+        exporter = OTLPSpanExporter(
+            endpoint=settings.trace.exporter_endpoint, timeout=settings.trace.export_timeout_s
+        )
+        provider.add_span_processor(
+            BatchSpanProcessor(
+                exporter, export_timeout_millis=int(settings.trace.export_timeout_s * 1000)
+            )
+        )
     else:
         provider.add_span_processor(SimpleSpanProcessor(exporter))
 

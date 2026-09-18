@@ -30,6 +30,7 @@ class TraceConfig(BaseModel):
     retention_days: int = 30
     content_max_chars: int = 20_000
     attr_string_max_chars: int = 1_000
+    export_timeout_s: float = 10
 
 
 class Settings(BaseModel):

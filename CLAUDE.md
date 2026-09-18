@@ -12,10 +12,12 @@ The full specification is `docs/front-line-php-rag-spec.md`. It is the source of
 relevant stage section before writing or changing a stage. Each stage there follows one template:
 Purpose, Input and output, Rules, Configuration, Trace span, Done when.
 
-**Current state:** Milestone 0 in progress. Implemented: `tracing.py` (the `@stage` decorator,
-OTLP exporter, structlog processor) and `settings.py` (loads `config.yaml`, types the `trace`
-section, computes `config_hash`, rejects secret-looking keys). Every other Python file under `src/`,
+**Current state:** Milestone 0 complete. Implemented: `tracing.py` (the `@stage` decorator, OTLP
+exporter, structlog processor), `settings.py` (loads `config.yaml`, types the `trace` section,
+computes `config_hash`, rejects secret-looking keys), and `hello.py` (`uv run python -m
+flp_rag.hello` emits one span named `hello` to Phoenix). Every other Python file under `src/`,
 `eval/`, and `tests/` still holds one comment line that names its stage and spec section.
+Milestone 1 (parse and chunk, issues #4 to #9) is next.
 
 ## Hard rules (from the spec)
 
