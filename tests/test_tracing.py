@@ -114,7 +114,28 @@ def test_stage_records_exception_and_reraises(exporter: InMemorySpanExporter) ->
     assert span.status.status_code is StatusCode.ERROR
     assert "rag.latency_ms" in span.attributes
     events = [e for e in span.events if e.name == "exception"]
-    assert events and events[0].attributes["exception.type"] == "ValueError"
+    assert len(events) == 1, "the SDK must not record the exception a second time"
+    assert events[0].attributes["exception.type"] == "ValueError"
+
+
+def test_attribute_and_content_limits_come_from_config() -> None:
+    exporter = InMemorySpanExporter()
+    settings = load_settings()
+    tight = settings.model_copy(
+        update={"trace": settings.trace.model_copy(
+            update={"content_max_chars": 5, "attr_string_max_chars": 3})}
+    )
+    tracing.configure_tracing(tight, exporter=exporter, force=True)
+
+    @tracing.stage("query.classify", kind="LLM")
+    def classify(q: Query) -> str:
+        return "book_question"
+
+    classify(Query("readonly properties", 1))
+
+    attrs = _only_span(exporter).attributes
+    assert attrs["rag.question_raw"] == "rea"
+    assert attrs["output.value"] == "book_"
 
 
 def test_stage_wraps_async_functions(exporter: InMemorySpanExporter) -> None:

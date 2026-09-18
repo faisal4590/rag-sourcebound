@@ -37,8 +37,6 @@ SpanKind = Literal["CHAIN", "RETRIEVER", "RERANKER", "LLM", "TOOL", "EMBEDDING"]
 
 SERVICE_NAME = "flp-rag"
 ENVIRONMENT = "dev"
-CONTENT_MAX_CHARS = 20_000
-ATTR_STRING_MAX_CHARS = 1_000
 
 _Primitive = str | bool | int | float
 
@@ -53,6 +51,8 @@ class _State:
 
     provider: TracerProvider | None = None
     capture_content: bool = True
+    content_max_chars: int = 20_000
+    attr_string_max_chars: int = 1_000
 
 
 # --------------------------------------------------------------------------- setup
@@ -93,6 +93,8 @@ def configure_tracing(
         trace.set_tracer_provider(provider)
     _State.provider = provider
     _State.capture_content = settings.trace.capture_content
+    _State.content_max_chars = settings.trace.content_max_chars
+    _State.attr_string_max_chars = settings.trace.attr_string_max_chars
     return provider
 
 
@@ -128,6 +130,9 @@ def git_sha() -> str:
 
 # --------------------------------------------------------------------------- decorator
 
+# The decorator records exceptions and sets status itself. Stop the SDK from doing it a second time.
+_SPAN_OPTS = {"record_exception": False, "set_status_on_exception": False}
+
 
 def stage(name: str, kind: SpanKind = "CHAIN") -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Wrap one pipeline stage in one span named `name`."""
@@ -137,7 +142,7 @@ def stage(name: str, kind: SpanKind = "CHAIN") -> Callable[[Callable[..., Any]],
 
             @functools.wraps(fn)
             async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
-                with _tracer().start_as_current_span(name) as span:
+                with _tracer().start_as_current_span(name, **_SPAN_OPTS) as span:
                     _on_enter(span, kind, args, kwargs)
                     started = time.perf_counter()
                     try:
@@ -152,7 +157,7 @@ def stage(name: str, kind: SpanKind = "CHAIN") -> Callable[[Callable[..., Any]],
 
         @functools.wraps(fn)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
-            with _tracer().start_as_current_span(name) as span:
+            with _tracer().start_as_current_span(name, **_SPAN_OPTS) as span:
                 _on_enter(span, kind, args, kwargs)
                 started = time.perf_counter()
                 try:
@@ -216,18 +221,19 @@ def _primitive(value: Any) -> _Primitive | None:
     if isinstance(value, bool | int | float):
         return value
     if isinstance(value, str):
-        return value[:ATTR_STRING_MAX_CHARS]
-    return json.dumps(value, default=str)[:ATTR_STRING_MAX_CHARS]
+        return value[: _State.attr_string_max_chars]
+    return json.dumps(value, default=str)[: _State.attr_string_max_chars]
 
 
 def _content(value: Any) -> str:
     """Serialize a stage input or output for `input.value` / `output.value`."""
+    limit = _State.content_max_chars
     if isinstance(value, str):
-        return value[:CONTENT_MAX_CHARS]
+        return value[:limit]
     try:
-        return json.dumps(_jsonable(value), default=str)[:CONTENT_MAX_CHARS]
+        return json.dumps(_jsonable(value), default=str)[:limit]
     except (TypeError, ValueError):
-        return repr(value)[:CONTENT_MAX_CHARS]
+        return repr(value)[:limit]
 
 
 def _jsonable(value: Any) -> Any:

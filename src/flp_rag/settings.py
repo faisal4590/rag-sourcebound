@@ -19,7 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 ABSTAIN_TEXT = "No information found"
 
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config.yaml"
-_SECRET_KEY = re.compile(r"(^|_)(api_?key|secret|token|password)(_|$)")
+_SECRET_KEY = re.compile(r"(^|_)(api_?key|key|secret|token|password|credentials?)(_|$)")
 
 
 class TraceConfig(BaseModel):
@@ -28,6 +28,8 @@ class TraceConfig(BaseModel):
     exporter_endpoint: str
     capture_content: bool = True
     retention_days: int = 30
+    content_max_chars: int = 20_000
+    attr_string_max_chars: int = 1_000
 
 
 class Settings(BaseModel):

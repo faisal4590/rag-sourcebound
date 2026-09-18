@@ -45,9 +45,19 @@ def test_missing_required_section_raises(tmp_path: Path) -> None:
         load_settings(p)
 
 
-def test_api_key_in_config_is_rejected(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "line",
+    ["openai_api_key: sk-abc", "anthropic_key: sk-ant", "gen:\n  token: x", "db_password: pw",
+     "cohere_credentials: c"],
+)
+def test_secret_looking_keys_are_rejected(tmp_path: Path, line: str) -> None:
     src = (ROOT / "config.yaml").read_text()
     p = tmp_path / "leaky.yaml"
-    p.write_text(src + "\nopenai_api_key: sk-abc\n")
-    with pytest.raises(ValueError, match="api_key"):
+    p.write_text(src + "\n" + line + "\n")
+    with pytest.raises(ValueError, match="secret-looking"):
         load_settings(p)
+
+
+def test_token_limits_are_not_secrets() -> None:
+    # max_tokens, tokenizer, prices_usd_per_million_tokens all load.
+    assert load_settings().trace.content_max_chars == 20_000
