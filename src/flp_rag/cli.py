@@ -59,6 +59,13 @@ def ingest(
             f"callouts_merged={struct.callouts_merged_across_pages} "
             f"labels_dropped={struct.labels_dropped} -> {struct.output_path}"
         )
+    cleaned = results.get("clean")
+    if cleaned is not None:
+        typer.echo(
+            f"CLEAN OK: blocks={cleaned.blocks_total} changed={cleaned.blocks_changed} "
+            f"rule_counts={cleaned.rule_counts} chars_removed={cleaned.chars_removed} "
+            f"-> {cleaned.output_path}"
+        )
 
 
 @app.command(name="eval")
