@@ -39,6 +39,7 @@ class _Section(BaseModel):
 class ParseConfig(_Section):
     header_max_top_pt: float = 50
     header_font_size_pt: float = 8
+    printed_page_offset: int = 2
     skip_pages: tuple[int, ...]
 
 

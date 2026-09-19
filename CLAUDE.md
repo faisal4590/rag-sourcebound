@@ -12,13 +12,13 @@ The full specification is `docs/front-line-php-rag-spec.md`. It is the source of
 relevant stage section before writing or changing a stage. Each stage there follows one template:
 Purpose, Input and output, Rules, Configuration, Trace span, Done when.
 
-**Current state:** Milestone 0 complete, Milestone 1 in progress. Implemented: `tracing.py`
-(the `@stage` decorator, OTLP exporter, structlog processor), `settings.py` (every `config.yaml`
-section typed and closed, `config_hash`, `chunk_config_hash`, cross-field checks, secret-key
-rejection), `hello.py` (`uv run python -m flp_rag.hello` emits one span to Phoenix), and
-`contracts.py` (the ten frozen records from spec Section 10 with `to_attrs()`, plus JSONL read and
-write helpers). Every other Python file under `src/`, `eval/`, and `tests/` still holds one comment
-line that names its stage and spec section. Next: Stage 1, parse (#6).
+**Current state:** Milestone 0 complete, Milestone 1 in progress. Implemented: `tracing.py`,
+`settings.py` (every section typed), `hello.py`, `contracts.py` (spec Section 10 records plus
+`Chapter` and `ParsedPage`), and Stage 1 `ingest/s01_parse.py` with `ingest/run.py` and
+`flp ingest --only parse [--force]`. Stage 1 output for the shipped PDF: 313 pages, 45,456 words,
+1,415 header words deleted, 33 chapters, `doc_id bca146b9df2d0a2b`. Every other Python file under
+`src/`, `eval/`, and `tests/` still holds one comment line. Next: Stage 2, structure (#7).
+`CONTEXT.md` is the glossary; read it before naming anything.
 
 ## Hard rules (from the spec)
 

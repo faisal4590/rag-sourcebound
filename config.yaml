@@ -4,6 +4,7 @@ abstain_text: "No information found"
 parse:
   header_max_top_pt: 50
   header_font_size_pt: 8
+  printed_page_offset: 2         # printed page = PDF page - 2, measured on this edition
   skip_pages: [1, 2, 3, 4, 5, 6, 7, 8, 12, 156, 232]
 
 structure:
