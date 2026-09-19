@@ -37,6 +37,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest", "ruff"]
 local = ["arize-phoenix"]   # Phoenix server for `make up-local` (no Docker)
+tools = ["fonttools"]        # tools/build_glyph_table.py
 eval = ["ragas"]
 
 [project.scripts]

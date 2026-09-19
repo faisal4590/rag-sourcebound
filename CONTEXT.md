@@ -72,10 +72,15 @@ the bookmarks in Stage 1 and read by every later stage.
 _Avoid_: table of contents, outline, TOC
 
 **Ligature glyph**:
-A JetBrains Mono glyph that draws an operator such as `->`, `::`, `__`, or `!==` as one shape.
-The PDF text layer reads it as `=` plus a tail, so code text is wrong until glyph ids are mapped
-back (issue #48). Stage 2 output still carries the corruption.
+A JetBrains Mono glyph that draws an operator such as `->`, `::`, `__`, or `!==` as one wide
+shape after an empty spacer glyph. The PDF text layer reads the spacer as `=`, so Stage 1 maps
+glyph ids back to text through a glyph table.
 _Avoid_: font bug, encoding error
+
+**Glyph table**:
+A JSON file that maps glyph ids of one embedded font to the text they stand for, generated from
+the upstream font's glyph names. One per font face. Named in `parse.glyph_tables`.
+_Avoid_: font map, cmap, ToUnicode override
 
 ### Parsing units
 

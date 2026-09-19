@@ -41,6 +41,7 @@ class ParseConfig(_Section):
     header_font_size_pt: float = 8
     printed_page_offset: int = 2
     skip_pages: tuple[int, ...]
+    glyph_tables: dict[str, Path] = Field(default_factory=dict)
     rect_min_width_pt: float = Field(default=100, ge=0)
     rect_fills: dict[Literal["code", "callout", "highlight"], tuple[float, float, float]]
 

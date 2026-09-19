@@ -146,6 +146,78 @@ def test_parsed_page_round_trips_with_nested_words(tmp_path: Path) -> None:
     assert back == page and isinstance(back.words[0], Word)
 
 
+# --------------------------------------------------------------------------- glyph recovery
+
+
+def _ch(text: str, x0: float, *, top: float = 343.7, gid: int | None = None) -> dict:
+    return {"text": text, "x0": x0, "x1": x0 + 5.4, "top": top, "bottom": top + 9.0,
+            "y1": 651.969 - top, "fontname": "MBPBAO+JetBrainsMono-Regular", "size": 9.0,
+            "upright": True, "_gid": gid}
+
+
+def _ids(chars: list[dict]) -> s1.GlyphIds:
+    return {(round(c["x0"], 3), round(c["y1"], 3)): (c["_gid"], "JetBrainsMono-Regular")
+            for c in chars if c["_gid"] is not None}
+
+
+def test_glyph_tables_load_from_config() -> None:
+    tables = s1.load_glyph_tables(load_settings().parse, ROOT)
+    reg = tables["JetBrainsMono-Regular"]
+    assert reg[1205] == "" and reg[626] == "->" and reg[1044] == "=>"
+    assert reg[680] == "__" and reg[641] == "::" and reg[637] == "..."
+    assert reg[1041] == "==" and reg[1042] == "===" and reg[652] == "!=="
+    assert reg[1052] == ">=" and reg[1076] == "<=" and reg[662] == "#["
+    assert "JetBrainsMono-Italic" in tables
+
+
+@pytest.mark.parametrize(
+    ("layer", "gids", "expected"),
+    [
+        ("$this=>name", [None] * 5 + [1205, 626] + [None] * 4, "$this->name"),
+        ("=_construct", [1205, 680] + [None] * 9, "__construct"),
+        ("Foo=:bar", [None] * 3 + [1205, 641] + [None] * 3, "Foo::bar"),
+        ("f(==.$a)", [None, None, 1205, 1205, 637, None, None, None], "f(...$a)"),
+        ("a=?b", [None, 1205, 655, None], "a??b"),
+        ("a===b", [None, 1205, 1205, 1042, None], "a===b"),
+        ("a===b", [None, 1205, 1205, 652, None], "a!==b"),
+        ("a==b", [None, 1205, 1052, None], "a>=b"),
+        ("a==b", [None, 1205, 1076, None], "a<=b"),
+        ("=[Attr]", [1205, 662, None, None, None, None, None], "#[Attr]"),
+        ("x => y", [None, None, 1205, 1044, None, None], "x => y"),
+    ],
+)
+def test_recover_glyphs_rebuilds_ligatures(layer: str, gids: list, expected: str) -> None:
+    tables = s1.load_glyph_tables(load_settings().parse, ROOT)
+    chars = [_ch(t, 100 + i * 5.4, gid=g) for i, (t, g) in enumerate(zip(layer, gids, strict=True))]
+    fixed, changed = s1.recover_glyphs(chars, _ids(chars), tables)
+    assert "".join(c["text"] for c in fixed) == expected
+    # Every listed glyph changes: the spacer loses its "=", each tail grows to its ligature.
+    assert changed == sum(1 for g in gids if g is not None)
+
+
+def test_recover_glyphs_moves_x0_onto_the_spacer() -> None:
+    # A line that starts with "->" must keep the spacer's x0, or its indentation shifts.
+    tables = s1.load_glyph_tables(load_settings().parse, ROOT)
+    chars = [_ch("=", 100.0, gid=1205), _ch(">", 105.4, gid=626), _ch("f", 110.8)]
+    fixed, _ = s1.recover_glyphs(chars, _ids(chars), tables)
+    assert [(c["text"], c["x0"]) for c in fixed] == [("->", 100.0), ("f", 110.8)]
+
+
+def test_glyph_table_only_blanks_the_spacer() -> None:
+    tables = s1.load_glyph_tables(load_settings().parse, ROOT)
+    for font, table in tables.items():
+        assert [gid for gid, text in table.items() if text == ""] == [1205], font
+        assert all(len(text) >= 2 for gid, text in table.items() if gid != 1205), font
+
+
+def test_recover_glyphs_leaves_other_fonts_alone() -> None:
+    tables = s1.load_glyph_tables(load_settings().parse, ROOT)
+    chars = [_ch("=", 100.0, gid=1205), _ch(">", 105.4, gid=626)]
+    ids = {k: (g, "IBMPlexMono") for k, (g, _) in _ids(chars).items()}
+    fixed, changed = s1.recover_glyphs(chars, ids, tables)
+    assert changed == 0 and "".join(c["text"] for c in fixed) == "=>"
+
+
 # --------------------------------------------------------------------------- real PDF
 
 
@@ -214,6 +286,23 @@ def test_classify_fill_and_select_rects() -> None:
     ]
     rects = s1.select_rects(raw, words, cfg)
     assert [(r.kind, r.top) for r in rects] == [("code", 148.0), ("code", 300.0)]
+
+
+@needs_pdf
+def test_ligatures_are_recovered_on_the_real_pdf(parsed: tuple) -> None:
+    result, span = parsed
+    pages = {p.page_pdf: p for p in read_jsonl(result.output_path, ParsedPage)}
+    texts66 = {w.text for w in pages[66].words}
+    assert "__construct(" in texts66
+    assert "$this->name" in texts66
+    mono = " ".join(w.text for p in pages.values() for w in p.words if "Mono" in w.font)
+    for bad in ("=_", "=:", "==.", "=?", "=["):
+        assert bad not in mono, bad
+    # 293 arrow glyphs and 140 double-colon glyphs were counted in the PDF (issue #48).
+    assert mono.count("->") > 250 and mono.count("::") > 100
+    assert mono.count(">=") + mono.count("<=") + mono.count("!==") >= 5
+    assert result.glyphs_recovered > 800
+    assert span.attributes["rag.glyphs_recovered"] == result.glyphs_recovered
 
 
 @needs_pdf
