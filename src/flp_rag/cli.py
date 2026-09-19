@@ -66,6 +66,18 @@ def ingest(
             f"rule_counts={cleaned.rule_counts} chars_removed={cleaned.chars_removed} "
             f"-> {cleaned.output_path}"
         )
+    chunked = results.get("chunk")
+    if chunked is not None:
+        typer.echo(
+            f"CHUNK OK: chunks={chunked.chunks_total} parents={chunked.parents_total} "
+            f"tokens p50={chunked.tokens_p50} p95={chunked.tokens_p95} max={chunked.tokens_max} "
+            f"with_code={chunked.chunks_with_code} over_max={chunked.chunks_over_max} "
+            f"under_min={chunked.chunks_under_min} composition={chunked.composition} "
+            f"-> {chunked.output_path}"
+        )
+        width = max(chunked.histogram.values(), default=1)
+        for bucket, n in chunked.histogram.items():
+            typer.echo(f"  {bucket:>9} | {'#' * (40 * n // width):<40} {n}")
 
 
 @app.command(name="eval")
