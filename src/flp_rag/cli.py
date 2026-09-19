@@ -1,7 +1,14 @@
 # Typer CLI: flp ask, flp ingest, flp eval, flp calibrate. Spec Appendix D.
 """Command line entry point. Subcommands are stubs until their milestone lands."""
 
+from pathlib import Path
+from typing import Annotated
+
 import typer
+
+from flp_rag import tracing
+from flp_rag.ingest import run as run_mod
+from flp_rag.settings import load_settings
 
 app = typer.Typer(no_args_is_help=True, help="Front Line PHP RAG.")
 
@@ -18,9 +25,31 @@ def ask(question: str) -> None:
 
 
 @app.command()
-def ingest() -> None:
-    """Run Stages 1-8. Milestone 1 and 2."""
-    _not_yet(14)
+def ingest(
+    only: Annotated[str | None, typer.Option(help="Run one stage only, e.g. parse.")] = None,
+    force: Annotated[bool, typer.Option(help="Ignore an existing index with the same hashes.")] = False,
+    pdf: Annotated[Path, typer.Option(help="Path to the PDF.")] = run_mod.DEFAULT_PDF,
+) -> None:
+    """Run Stages 1-8 (parse only until issue #14)."""
+    settings = load_settings()
+    tracing.configure_logging()
+    tracing.configure_tracing(settings)
+    try:
+        results = run_mod.run(settings, pdf_path=pdf, only=only, force=force)
+    finally:
+        tracing.shutdown_tracing()
+    parse = results.get("parse")
+    if parse is None:
+        return
+    if parse.already_indexed:
+        typer.echo(f"already indexed: doc_id={parse.doc_id} index_version={parse.already_indexed}")
+        return
+    typer.echo(
+        f"PARSE OK: doc_id={parse.doc_id} pages={parse.pages_parsed}/{parse.pages_total} "
+        f"words={parse.words_total} header_words_deleted={parse.header_words_deleted} "
+        f"chapters={parse.chapters_found} pages_without_header={parse.pages_without_header} "
+        f"-> {parse.output_path}"
+    )
 
 
 @app.command(name="eval")

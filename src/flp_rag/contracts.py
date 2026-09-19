@@ -164,6 +164,52 @@ class Parent:
         )
 
 
+@dataclass(frozen=True)
+class Chapter:
+    """Stage 1. One row of the chapter table, built from the PDF bookmarks.
+
+    `chapter_no` is 0 for Foreword and Preface, 1-30 for the numbered chapters, 31 for In Closing.
+    `part` is the short label (`Part 1`, `Front matter`); `part_title` the printed part name.
+    """
+
+    order: int
+    chapter_no: int
+    title: str
+    part: str
+    part_title: str
+    page_pdf_start: int
+    page_pdf_end: int
+
+    def to_attrs(self) -> Attrs:
+        return _attrs(
+            chapter_no=self.chapter_no,
+            chapter_title=self.title,
+            part=self.part,
+            page_pdf_start=self.page_pdf_start,
+            page_pdf_end=self.page_pdf_end,
+        )
+
+
+@dataclass(frozen=True)
+class ParsedPage:
+    """Stage 1. One PDF page after header removal."""
+
+    doc_id: str
+    page_pdf: int
+    page_printed: int
+    header_words_deleted: int
+    words: list[Word]
+
+    def to_attrs(self) -> Attrs:
+        return _attrs(
+            doc_id=self.doc_id,
+            page_pdf=self.page_pdf,
+            page_printed=self.page_printed,
+            header_words_deleted=self.header_words_deleted,
+            words_total=len(self.words),
+        )
+
+
 # --------------------------------------------------------------------------- online records
 
 
