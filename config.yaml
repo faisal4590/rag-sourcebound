@@ -93,6 +93,9 @@ output:
   code_verbatim: true
   judge_model: <small-model-name>
 
+feedback:
+  enabled: true                  # Stage 18: CLI keypress and POST /feedback
+
 cache:
   semantic_enabled: false        # Milestone 7
   similarity_threshold: 0.97

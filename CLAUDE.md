@@ -13,12 +13,12 @@ relevant stage section before writing or changing a stage. Each stage there foll
 Purpose, Input and output, Rules, Configuration, Trace span, Done when.
 
 **Current state:** Milestone 0 complete, Milestone 1 in progress. Implemented: `tracing.py`
-(the `@stage` decorator, OTLP exporter, structlog processor), `settings.py` (loads `config.yaml`,
-types the `trace` section, computes `config_hash`, rejects secret-looking keys), `hello.py`
-(`uv run python -m flp_rag.hello` emits one span to Phoenix), and `contracts.py` (the ten frozen
-records from spec Section 10 with `to_attrs()`, plus JSONL read and write helpers). Every other
-Python file under `src/`, `eval/`, and `tests/` still holds one comment line that names its stage
-and spec section. Next: `settings.py` typing for every section (#5), then Stage 1 (#6).
+(the `@stage` decorator, OTLP exporter, structlog processor), `settings.py` (every `config.yaml`
+section typed and closed, `config_hash`, `chunk_config_hash`, cross-field checks, secret-key
+rejection), `hello.py` (`uv run python -m flp_rag.hello` emits one span to Phoenix), and
+`contracts.py` (the ten frozen records from spec Section 10 with `to_attrs()`, plus JSONL read and
+write helpers). Every other Python file under `src/`, `eval/`, and `tests/` still holds one comment
+line that names its stage and spec section. Next: Stage 1, parse (#6).
 
 ## Hard rules (from the spec)
 
