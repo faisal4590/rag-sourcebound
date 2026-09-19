@@ -31,7 +31,7 @@ from pdfminer.pdfdocument import PDFDestinationNotFound
 from pdfminer.pdfpage import PDFPage
 from pdfminer.pdftypes import resolve1
 
-from flp_rag.contracts import Attrs, Chapter, ParsedPage, Word, write_jsonl
+from flp_rag.contracts import Attrs, Chapter, ParsedPage, Rect, Word, write_jsonl
 from flp_rag.settings import ParseConfig, Settings
 from flp_rag.tracing import current_span, stage
 
@@ -193,6 +193,51 @@ def find_existing_index(index_dir: Path, doc_id: str, chunk_config_hash: str) ->
     return None
 
 
+def classify_fill(fill: Any, cfg: ParseConfig) -> str | None:
+    """Rect kind for a pdfplumber non-stroking color, or None for an unknown fill."""
+    if not isinstance(fill, list | tuple) or len(fill) != 3:
+        return None
+    rounded = tuple(round(float(c), 3) for c in fill)
+    for kind, rgb in cfg.rect_fills.items():
+        if all(abs(a - b) < 0.002 for a, b in zip(rounded, rgb, strict=True)):
+            return kind
+    return None
+
+
+def select_rects(
+    raw_rects: Sequence[dict[str, Any]], words: Sequence[Word], cfg: ParseConfig
+) -> list[Rect]:
+    """Keep wide rectangles with a known fill. A code background is kept even when it holds no
+    word: it marks a blank line inside a code block and keeps the block's rectangle chain
+    unbroken. Callout and highlight rectangles need at least one word."""
+    out: list[Rect] = []
+    for r in raw_rects:
+        if float(r["width"]) < cfg.rect_min_width_pt:
+            continue
+        kind = classify_fill(r.get("non_stroking_color"), cfg)
+        if kind is None:
+            continue
+        rect = Rect(
+            x0=round(float(r["x0"]), 2),
+            x1=round(float(r["x1"]), 2),
+            top=round(float(r["top"]), 2),
+            bottom=round(float(r["bottom"]), 2),
+            kind=kind,  # type: ignore[arg-type]
+        )
+        if kind == "code" or any(word_in_rect(w, rect) for w in words):
+            out.append(rect)
+    return sorted(out, key=lambda r: (r.top, r.x0))
+
+
+def word_in_rect(w: Word, r: Rect, tolerance: float = 1.0) -> bool:
+    return (
+        w.x0 >= r.x0 - tolerance
+        and w.x1 <= r.x1 + tolerance
+        and w.top >= r.top - tolerance
+        and w.bottom <= r.bottom + tolerance
+    )
+
+
 # --------------------------------------------------------------------------- PDF access
 
 
@@ -268,6 +313,7 @@ def parse(
             if page_pdf in skipped:
                 continue
             words, deleted = split_header_words(_extract_words(page), cfg, page_pdf)
+            rects = select_rects(page.rects, words, cfg)
             if deleted == 0:
                 pages_without_header.append(page_pdf)
                 log.warning("page has no header words", page_pdf=page_pdf, words=len(words))
@@ -278,6 +324,7 @@ def parse(
                     page_printed=page_pdf - cfg.printed_page_offset,
                     header_words_deleted=deleted,
                     words=words,
+                    rects=rects,
                 )
             )
 

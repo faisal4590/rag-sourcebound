@@ -6,11 +6,24 @@ parse:
   header_font_size_pt: 8
   printed_page_offset: 2         # printed page = PDF page - 2, measured on this edition
   skip_pages: [1, 2, 3, 4, 5, 6, 7, 8, 12, 156, 232]
+  rect_min_width_pt: 100         # narrower filled shapes are decoration, not text backgrounds
+  rect_fills:                    # non-stroking RGB, rounded to 3 decimals, measured on this edition
+    code: [0.976, 0.976, 0.976]
+    callout: [0.271, 0.188, 0.659]
+    highlight: [0.941, 0.973, 1.0]
 
 structure:
   line_tolerance_pt: 2
   paragraph_gap_factor: 1.5
   mono_fonts: ["JetBrainsMono", "IBMPlexMono"]
+  heading_font: Staatliches         # spec 2.2 font map
+  heading_sizes_pt: [14, 16]        # section headings and callout titles; 16 only in chapter 24
+  chapter_title_size_pt: 34
+  label_size_pt: 9                  # the "CHAPTER NN" label on opener pages
+  label_pattern: '^CHAPTER \d+$'
+  mono_char_width_ratio: 0.6        # fallback char width = ratio * font size when unmeasurable
+  code_min_gap_chars: 0.5           # words closer than this many chars touch: no space between
+  default_mono_size_pt: 9
 
 clean:
   rules_enabled: [nfc, nbsp, zero_width, whitespace, page_number_lines]

@@ -12,13 +12,13 @@ from typing import Any
 
 import structlog
 
-from flp_rag.ingest import s01_parse
+from flp_rag.ingest import s01_parse, s02_structure
 from flp_rag.settings import Settings
 from flp_rag.tracing import current_span, git_sha, stage
 
 log = structlog.get_logger()
 
-STAGES: tuple[str, ...] = ("parse",)  # later: structure, clean, chunk, enrich, embed, index, verify
+STAGES: tuple[str, ...] = ("parse", "structure")  # later: clean, chunk, enrich, embed, index, verify
 
 DEFAULT_PDF = Path("data/raw/front-line-php-revised-for-php-82.pdf")
 
@@ -43,21 +43,24 @@ def run(
 
     results: dict[str, Any] = {}
     outcome = "ok"
+    doc_id = s01_parse.compute_doc_id(pdf_path)
+    span.set_attribute("rag.doc_id", doc_id)
     steps: dict[str, Callable[[], Any]] = {
         "parse": lambda: s01_parse.parse(
             pdf_path, settings, out_dir=data_dir / "parsed", index_dir=data_dir / "index",
             force=force,
+        ),
+        "structure": lambda: s02_structure.structure(
+            doc_id, settings, in_dir=data_dir / "parsed", out_dir=data_dir / "blocks"
         ),
     }
     for name in STAGES:
         if only is not None and name != only:
             continue
         results[name] = steps[name]()
-        if name == "parse":
-            span.set_attribute("rag.doc_id", results[name].doc_id)
-            if results[name].already_indexed is not None:
-                outcome = "already_indexed"
-                break
+        if name == "parse" and results[name].already_indexed is not None:
+            outcome = "already_indexed"
+            break
     span.set_attribute("rag.duration_s", round(time.perf_counter() - started, 3))
     span.set_attribute("rag.result", outcome)
     return results

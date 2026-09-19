@@ -190,15 +190,36 @@ class Chapter:
         )
 
 
+RectKind = Literal["code", "callout", "highlight"]
+
+
+@dataclass(frozen=True)
+class Rect:
+    """Stage 1. One shaded rectangle under text, classified by its fill color."""
+
+    x0: float
+    x1: float
+    top: float
+    bottom: float
+    kind: RectKind
+
+    def __post_init__(self) -> None:
+        _check_literals(self)
+
+    def to_attrs(self) -> Attrs:
+        return _attrs(rect_kind=self.kind, top=self.top, bottom=self.bottom)
+
+
 @dataclass(frozen=True)
 class ParsedPage:
-    """Stage 1. One PDF page after header removal."""
+    """Stage 1. One PDF page after header removal, with its words and shaded rectangles."""
 
     doc_id: str
     page_pdf: int
     page_printed: int
     header_words_deleted: int
     words: list[Word]
+    rects: list[Rect] = field(default_factory=list)
 
     def to_attrs(self) -> Attrs:
         return _attrs(
@@ -207,6 +228,7 @@ class ParsedPage:
             page_printed=self.page_printed,
             header_words_deleted=self.header_words_deleted,
             words_total=len(self.words),
+            rects_total=len(self.rects),
         )
 
 

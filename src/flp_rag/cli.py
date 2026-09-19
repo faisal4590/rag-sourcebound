@@ -39,17 +39,26 @@ def ingest(
     finally:
         tracing.shutdown_tracing()
     parse = results.get("parse")
-    if parse is None:
-        return
-    if parse.already_indexed:
-        typer.echo(f"already indexed: doc_id={parse.doc_id} index_version={parse.already_indexed}")
-        return
-    typer.echo(
-        f"PARSE OK: doc_id={parse.doc_id} pages={parse.pages_parsed}/{parse.pages_total} "
-        f"words={parse.words_total} header_words_deleted={parse.header_words_deleted} "
-        f"chapters={parse.chapters_found} pages_without_header={parse.pages_without_header} "
-        f"-> {parse.output_path}"
-    )
+    if parse is not None:
+        if parse.already_indexed:
+            typer.echo(
+                f"already indexed: doc_id={parse.doc_id} index_version={parse.already_indexed}"
+            )
+            return
+        typer.echo(
+            f"PARSE OK: doc_id={parse.doc_id} pages={parse.pages_parsed}/{parse.pages_total} "
+            f"words={parse.words_total} header_words_deleted={parse.header_words_deleted} "
+            f"chapters={parse.chapters_found} pages_without_header={parse.pages_without_header} "
+            f"-> {parse.output_path}"
+        )
+    struct = results.get("structure")
+    if struct is not None:
+        typer.echo(
+            f"STRUCTURE OK: blocks={struct.blocks_total} by_type={struct.blocks_by_type} "
+            f"chapters={struct.chapters_found} code_merged={struct.code_blocks_merged_across_pages} "
+            f"callouts_merged={struct.callouts_merged_across_pages} "
+            f"labels_dropped={struct.labels_dropped} -> {struct.output_path}"
+        )
 
 
 @app.command(name="eval")
