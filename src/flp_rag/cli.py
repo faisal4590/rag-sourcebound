@@ -49,7 +49,7 @@ def ingest(
             f"PARSE OK: doc_id={parse.doc_id} pages={parse.pages_parsed}/{parse.pages_total} "
             f"words={parse.words_total} header_words_deleted={parse.header_words_deleted} "
             f"chapters={parse.chapters_found} pages_without_header={parse.pages_without_header} "
-            f"-> {parse.output_path}"
+            f"glyphs_recovered={parse.glyphs_recovered} -> {parse.output_path}"
         )
     struct = results.get("structure")
     if struct is not None:

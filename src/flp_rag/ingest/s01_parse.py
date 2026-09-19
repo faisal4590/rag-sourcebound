@@ -15,6 +15,9 @@ Rules (spec Section 5, Stage 1):
    `parse.header_font_size_pt`.
 6. Skip `parse.skip_pages` (cover, table of contents, part title pages).
 7. Record pages with zero deleted header words. Warn, never fail.
+8. Recover ligature text (issue #48). JetBrains Mono draws `->`, `::`, `__`, `!==` as a spacer
+   glyph plus one wide glyph, and the PDF maps the spacer to `=`. A pdfminer pass records the
+   glyph id of every CID-font character; `parse.glyph_tables` maps ids back to text.
 """
 
 import hashlib
@@ -26,8 +29,12 @@ from pathlib import Path
 from typing import Any
 
 import pdfplumber
+import pdfplumber.utils
 import structlog
+from pdfminer.converter import PDFPageAggregator
 from pdfminer.pdfdocument import PDFDestinationNotFound
+from pdfminer.pdffont import PDFCIDFont
+from pdfminer.pdfinterp import PDFPageInterpreter, PDFResourceManager
 from pdfminer.pdfpage import PDFPage
 from pdfminer.pdftypes import resolve1
 
@@ -56,6 +63,7 @@ class ParseResult:
     chapters_found: int
     output_path: Path
     chapters_path: Path
+    glyphs_recovered: int = 0
     already_indexed: str | None = None
 
     def to_attrs(self) -> Attrs:
@@ -67,6 +75,7 @@ class ParseResult:
             "rag.header_words_deleted": self.header_words_deleted,
             "rag.pages_without_header": json.dumps(self.pages_without_header),
             "rag.chapters_found": self.chapters_found,
+            "rag.glyphs_recovered": self.glyphs_recovered,
         }
         if self.already_indexed is not None:
             attrs["rag.already_indexed"] = self.already_indexed
@@ -238,6 +247,83 @@ def word_in_rect(w: Word, r: Rect, tolerance: float = 1.0) -> bool:
     )
 
 
+# --------------------------------------------------------------------------- glyph recovery
+
+GlyphTables = dict[str, dict[int, str]]  # font base name -> glyph id -> text
+GlyphIds = dict[tuple[float, float], tuple[int, str]]  # (x0, y1) -> (glyph id, font base name)
+
+_COORD_DECIMALS = 3
+
+
+def load_glyph_tables(cfg: ParseConfig, root: Path) -> GlyphTables:
+    """Read the JSON tables named in `parse.glyph_tables`. Paths are relative to `root`."""
+    tables: GlyphTables = {}
+    for font, rel in cfg.glyph_tables.items():
+        data = json.loads((root / rel).read_text())
+        tables[font] = {int(gid): text for gid, text in data["glyphs"].items()}
+    return tables
+
+
+class _GlyphAggregator(PDFPageAggregator):
+    """pdfminer layout pass that remembers the glyph id of every character from a CID font."""
+
+    def __init__(self, rsrcmgr: PDFResourceManager) -> None:
+        super().__init__(rsrcmgr, laparams=None)
+        self.hits: list[tuple[float, float, int, str]] = []
+
+    def render_char(self, matrix, font, fontsize, scaling, rise, cid, ncs, graphicstate, *args, **kwargs):  # type: ignore[no-untyped-def]
+        adv = super().render_char(
+            matrix, font, fontsize, scaling, rise, cid, ncs, graphicstate, *args, **kwargs
+        )
+        if isinstance(font, PDFCIDFont):
+            item = self.cur_item._objs[-1]  # the LTChar that render_char just added
+            self.hits.append((item.x0, item.y1, cid, strip_font_prefix(font.basefont)))
+        return adv
+
+
+def page_glyph_ids(page: pdfplumber.page.Page) -> GlyphIds:
+    """Glyph id and font of every CID-font character on the page, keyed by (x0, y1)."""
+    rsrc = PDFResourceManager()
+    agg = _GlyphAggregator(rsrc)
+    PDFPageInterpreter(rsrc, agg).process_page(page.page_obj)
+    agg.get_result()
+    return {
+        (round(x0, _COORD_DECIMALS), round(y1, _COORD_DECIMALS)): (cid, base)
+        for x0, y1, cid, base in agg.hits
+    }
+
+
+def recover_glyphs(
+    chars: Sequence[dict[str, Any]], glyph_ids: GlyphIds, tables: GlyphTables
+) -> tuple[list[dict[str, Any]], int]:
+    """Replace the text of table-listed glyphs. A spacer (empty text) is dropped and the next
+    character on the line takes its x0, so word positions and indentation stay right.
+    Returns the fixed characters and the number of characters changed."""
+    out: list[dict[str, Any]] = []
+    changed = 0
+    pending_x0: float | None = None
+    pending_top: float | None = None
+    for ch in chars:
+        key = (round(ch["x0"], _COORD_DECIMALS), round(ch["y1"], _COORD_DECIMALS))
+        hit = glyph_ids.get(key)
+        if hit is not None:
+            gid, font = hit
+            text = tables.get(font, {}).get(gid)
+            if text is not None and text != ch["text"]:
+                changed += 1
+                if text == "":
+                    if pending_x0 is None:
+                        pending_x0, pending_top = ch["x0"], ch["top"]
+                    continue
+                ch = {**ch, "text": text}
+        if pending_x0 is not None:
+            if pending_top is not None and abs(ch["top"] - pending_top) < 1 and ch["x0"] >= pending_x0:
+                ch = {**ch, "x0": pending_x0}
+            pending_x0 = pending_top = None
+        out.append(ch)
+    return out, changed
+
+
 # --------------------------------------------------------------------------- PDF access
 
 
@@ -269,8 +355,12 @@ def _action_destination(action: Any) -> Any:
     return resolve1(resolved.get("D"))
 
 
-def _extract_words(page: pdfplumber.page.Page) -> list[dict[str, Any]]:
-    return page.extract_words(extra_attrs=["fontname", "size"])
+def _extract_words(page: pdfplumber.page.Page, tables: GlyphTables) -> tuple[list[dict[str, Any]], int]:
+    """Words with font name and size. With glyph tables, characters are repaired first."""
+    if not tables or not any(strip_font_prefix(c["fontname"]) in tables for c in page.chars):
+        return page.extract_words(extra_attrs=["fontname", "size"]), 0
+    chars, changed = recover_glyphs(page.chars, page_glyph_ids(page), tables)
+    return pdfplumber.utils.extract_words(chars, extra_attrs=["fontname", "size"]), changed
 
 
 # --------------------------------------------------------------------------- the stage
@@ -302,6 +392,8 @@ def parse(
             )
 
     skipped = set(cfg.skip_pages)
+    tables = load_glyph_tables(cfg, settings.config_path.parent)
+    glyphs_recovered = 0
     with pdfplumber.open(str(pdf_path)) as pdf:
         pages_total = len(pdf.pages)
         chapters = build_chapter_table(read_bookmarks(pdf), pages_total, cfg.skip_pages)
@@ -312,7 +404,9 @@ def parse(
             page_pdf = page.page_number
             if page_pdf in skipped:
                 continue
-            words, deleted = split_header_words(_extract_words(page), cfg, page_pdf)
+            raw_words, changed = _extract_words(page, tables)
+            glyphs_recovered += changed
+            words, deleted = split_header_words(raw_words, cfg, page_pdf)
             rects = select_rects(page.rects, words, cfg)
             if deleted == 0:
                 pages_without_header.append(page_pdf)
@@ -328,9 +422,16 @@ def parse(
                 )
             )
 
+    if tables and glyphs_recovered == 0:
+        log.warning(
+            "glyph tables configured but no glyph was recovered; check parse.glyph_tables names "
+            "against the fonts embedded in the PDF",
+            fonts=sorted(tables),
+        )
     write_jsonl(output_path, parsed)
     write_jsonl(chapters_path, chapters)
     current_span().set_attribute("rag.output_path", str(output_path))
+    current_span().set_attribute("rag.glyph_tables", json.dumps(sorted(tables)))
     return ParseResult(
         doc_id=doc_id,
         pages_total=pages_total,
@@ -341,4 +442,5 @@ def parse(
         chapters_found=len(chapters),
         output_path=output_path,
         chapters_path=chapters_path,
+        glyphs_recovered=glyphs_recovered,
     )

@@ -7,6 +7,9 @@ parse:
   printed_page_offset: 2         # printed page = PDF page - 2, measured on this edition
   skip_pages: [1, 2, 3, 4, 5, 6, 7, 8, 12, 156, 232]
   rect_min_width_pt: 100         # narrower filled shapes are decoration, not text backgrounds
+  glyph_tables:                  # glyph id -> text, for CID fonts whose ToUnicode is wrong (issue #48)
+    JetBrainsMono-Regular: src/flp_rag/ingest/glyph_tables/jetbrainsmono-2.221-regular.json
+    JetBrainsMono-Italic: src/flp_rag/ingest/glyph_tables/jetbrainsmono-2.221-italic.json
   rect_fills:                    # non-stroking RGB, rounded to 3 decimals, measured on this edition
     code: [0.976, 0.976, 0.976]
     callout: [0.271, 0.188, 0.659]
