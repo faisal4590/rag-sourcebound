@@ -14,11 +14,14 @@ Purpose, Input and output, Rules, Configuration, Trace span, Done when.
 
 **Current state:** Milestone 0 complete, Milestone 1 in progress. Implemented: `tracing.py`,
 `settings.py` (every section typed), `hello.py`, `contracts.py` (spec Section 10 records plus
-`Chapter` and `ParsedPage`), and Stage 1 `ingest/s01_parse.py` with `ingest/run.py` and
-`flp ingest --only parse [--force]`. Stage 1 output for the shipped PDF: 313 pages, 45,456 words,
-1,415 header words deleted, 33 chapters, `doc_id bca146b9df2d0a2b`. Every other Python file under
-`src/`, `eval/`, and `tests/` still holds one comment line. Next: Stage 2, structure (#7).
-`CONTEXT.md` is the glossary; read it before naming anything.
+`Chapter`, `ParsedPage`, `Rect`), Stage 1 `ingest/s01_parse.py` (words, shaded rectangles, chapter
+table), Stage 2 `ingest/s02_structure.py` (typed blocks), `ingest/run.py`, and
+`flp ingest [--only parse|structure] [--force]`. Shipped PDF: 313 pages, 45,456 words, 1,526
+blocks (33 chapter titles, 127 headings, 36 callouts, 397 code, 933 paragraphs).
+**Known trap, not in the spec:** JetBrains Mono ligatures read as `=` in the text layer, so
+`->` is `=>`, `__` is `=_`, `::` is `=:`, and `!==` is `===`. Issue #48 fixes it in Stage 1 by
+glyph id before Stage 3 starts. Every other Python file under `src/`, `eval/`, and `tests/` still
+holds one comment line. `CONTEXT.md` is the glossary; read it before naming anything.
 
 ## Hard rules (from the spec)
 

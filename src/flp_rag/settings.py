@@ -41,12 +41,22 @@ class ParseConfig(_Section):
     header_font_size_pt: float = 8
     printed_page_offset: int = 2
     skip_pages: tuple[int, ...]
+    rect_min_width_pt: float = Field(default=100, ge=0)
+    rect_fills: dict[Literal["code", "callout", "highlight"], tuple[float, float, float]]
 
 
 class StructureConfig(_Section):
     line_tolerance_pt: float = 2
     paragraph_gap_factor: float = 1.5
     mono_fonts: tuple[str, ...]
+    heading_font: str
+    heading_sizes_pt: tuple[float, ...]
+    chapter_title_size_pt: float
+    label_size_pt: float
+    label_pattern: str
+    mono_char_width_ratio: float = Field(gt=0)
+    default_mono_size_pt: float = Field(gt=0)
+    code_min_gap_chars: float = Field(ge=0, le=1)
 
 
 CleanRule = Literal["nfc", "nbsp", "zero_width", "whitespace", "page_number_lines"]

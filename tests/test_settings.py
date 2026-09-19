@@ -79,6 +79,9 @@ def test_every_spec_section_is_typed() -> None:
     assert s.structure.line_tolerance_pt == 2
     assert s.structure.paragraph_gap_factor == 1.5
     assert s.structure.mono_fonts == ("JetBrainsMono", "IBMPlexMono")
+    assert s.structure.heading_font == "Staatliches"
+    assert s.structure.heading_sizes_pt == (14, 16)
+    assert s.structure.chapter_title_size_pt == 34
     assert s.clean.rules_enabled == ("nfc", "nbsp", "zero_width", "whitespace", "page_number_lines")
     assert s.chunk.tokenizer == "cl100k_base"
     assert (s.chunk.min_tokens, s.chunk.target_tokens, s.chunk.max_tokens) == (120, 350, 600)

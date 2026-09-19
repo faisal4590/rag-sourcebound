@@ -183,6 +183,40 @@ def test_page_66_has_prose_in_inter_and_code_in_jetbrainsmono(parsed: tuple) -> 
 
 
 @needs_pdf
+def test_rects_are_exported_with_kinds(parsed: tuple) -> None:
+    result, _ = parsed
+    pages = {p.page_pdf: p for p in read_jsonl(result.output_path, ParsedPage)}
+    kinds66 = [r.kind for r in pages[66].rects]
+    assert kinds66 and set(kinds66) == {"code"}
+    assert all(b.top >= a.bottom - 0.5 for a, b in zip(pages[66].rects, pages[66].rects[1:]))
+    kinds61 = [r.kind for r in pages[61].rects]
+    assert kinds61.count("callout") == 2
+    assert pages[13].rects == []  # the full-page purple holds no words
+    assert any(r.kind == "highlight" for r in pages[102].rects)
+
+
+def test_classify_fill_and_select_rects() -> None:
+    cfg = load_settings().parse
+    assert s1.classify_fill((0.976, 0.976, 0.976), cfg) == "code"
+    assert s1.classify_fill([0.2710, 0.1880, 0.6590], cfg) == "callout"
+    assert s1.classify_fill((0.5, 0.5, 0.5), cfg) is None
+    assert s1.classify_fill(0, cfg) is None
+    words = [Word("x", "JetBrainsMono-Regular", 9.0, 80.0, 90.0, 150.0, 159.0, 66)]
+    raw = [
+        {"x0": 65.2, "x1": 473.4, "top": 148.0, "bottom": 164.0, "width": 408.2,
+         "non_stroking_color": (0.976, 0.976, 0.976)},
+        {"x0": 65.2, "x1": 473.4, "top": 300.0, "bottom": 316.0, "width": 408.2,
+         "non_stroking_color": (0.976, 0.976, 0.976)},  # empty code rect = blank code line, kept
+        {"x0": 65.2, "x1": 473.4, "top": 400.0, "bottom": 430.0, "width": 408.2,
+         "non_stroking_color": (0.271, 0.188, 0.659)},  # empty callout rect, dropped
+        {"x0": 10.0, "x1": 20.0, "top": 148.0, "bottom": 164.0, "width": 10.0,
+         "non_stroking_color": (0.976, 0.976, 0.976)},  # too narrow
+    ]
+    rects = s1.select_rects(raw, words, cfg)
+    assert [(r.kind, r.top) for r in rects] == [("code", 148.0), ("code", 300.0)]
+
+
+@needs_pdf
 def test_running_header_is_gone_everywhere(parsed: tuple) -> None:
     result, _ = parsed
     text = result.output_path.read_text()
