@@ -82,6 +82,38 @@ A JSON file that maps glyph ids of one embedded font to the text they stand for,
 the upstream font's glyph names. One per font face. Named in `parse.glyph_tables`.
 _Avoid_: font map, cmap, ToUnicode override
 
+**Section**:
+The blocks from one heading to the next inside a chapter. The blocks before the first heading of a
+chapter form the chapter intro, a section with an empty title. Chunks never cross a section
+boundary; a section smaller than the minimum chunk size is one chunk.
+_Avoid_: subsection, topic
+
+### Retrieval units
+
+**Chunk**:
+The unit that the system embeds and retrieves: one or more consecutive blocks of one section, with
+a whole code block never split from itself. Identified by `chunk_id`.
+_Avoid_: passage, segment, split
+
+**Chunk header**:
+The location line prepended to a chunk's embedding text only: book, part, chapter, section, and
+printed page range. Never shown to the reader.
+_Avoid_: breadcrumb, prefix
+
+**Display text**:
+The clean book text of a chunk, exactly as it will be shown to the generator and the reader.
+_Avoid_: content, body
+
+**Parent**:
+The section that contains a chunk, or, for a section over the parent size limit, the window of a
+chunk and its two neighbors. The generator reads parents, not chunks.
+_Avoid_: context window, expansion
+
+**Lead-in**:
+The last paragraph before a code block, at most 80 tokens, copied into a code-only chunk so the
+code keeps its introduction.
+_Avoid_: preamble, caption
+
 ### Parsing units
 
 **Word**:
