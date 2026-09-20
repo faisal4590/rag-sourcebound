@@ -32,6 +32,8 @@ dependencies = [
   "opentelemetry-sdk",
   "opentelemetry-exporter-otlp",
   "structlog",
+  "pyarrow>=25.0.1",
+  "numpy>=2.5.3",
 ]
 
 [project.optional-dependencies]
