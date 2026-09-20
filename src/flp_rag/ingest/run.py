@@ -12,13 +12,13 @@ from typing import Any
 
 import structlog
 
-from flp_rag.ingest import s01_parse, s02_structure, s03_clean, s04_chunk
+from flp_rag.ingest import s01_parse, s02_structure, s03_clean, s04_chunk, s05_enrich
 from flp_rag.settings import Settings
 from flp_rag.tracing import current_span, git_sha, stage
 
 log = structlog.get_logger()
 
-STAGES: tuple[str, ...] = ("parse", "structure", "clean", "chunk")  # later: enrich, embed, index, verify
+STAGES: tuple[str, ...] = ("parse", "structure", "clean", "chunk", "enrich")  # later: embed, index, verify
 
 DEFAULT_PDF = Path("data/raw/front-line-php-revised-for-php-82.pdf")
 
@@ -59,6 +59,10 @@ def run(
         "chunk": lambda: s04_chunk.chunk(
             doc_id, settings, in_dir=data_dir / "clean", parsed_dir=data_dir / "parsed",
             out_dir=data_dir / "chunks", parents_dir=data_dir / "parents",
+        ),
+        "enrich": lambda: s05_enrich.enrich(
+            doc_id, settings, in_dir=data_dir / "chunks", out_dir=data_dir / "enriched",
+            index_dir=data_dir / "index",
         ),
     }
     for name in STAGES:
