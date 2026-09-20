@@ -78,6 +78,12 @@ def ingest(
         width = max(chunked.histogram.values(), default=1)
         for bucket, n in chunked.histogram.items():
             typer.echo(f"  {bucket:>9} | {'#' * (40 * n // width):<40} {n}")
+    enriched = results.get("enrich")
+    if enriched is not None:
+        typer.echo(
+            f"ENRICH OK: chunks={enriched.chunks_enriched} index_version={enriched.index_version} "
+            f"llm_calls={enriched.llm_calls} cost_usd={enriched.cost_usd} -> {enriched.output_path}"
+        )
 
 
 @app.command(name="eval")
