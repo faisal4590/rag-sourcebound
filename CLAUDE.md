@@ -133,6 +133,22 @@ start with `text-embedding` and reranker names that start with `rerank` select t
 providers; anything else is a local Hugging Face model. `models.py` is the only file that names a
 provider or reads an API key (`Secrets`, from `.env`). The `.env` keys are empty on this machine.
 
+## Local models and where they live
+
+No model weights are in the repository. The libraries download each model on first use into a
+user-level cache and reuse it afterwards. A fresh clone fetches them on the first `flp ingest`.
+
+| Model | Used by | Cache path | Size |
+|---|---|---|---|
+| `BAAI/bge-m3` | `BgeM3Embedder`, dense vectors | `~/.cache/huggingface/hub/models--BAAI--bge-m3` | about 4 GB |
+| `BAAI/bge-reranker-v2-m3` | `BgeReranker`, Stage 13 | `~/.cache/huggingface/hub/models--BAAI--bge-reranker-v2-m3` | about 2 GB |
+| `Qdrant/bm25` | `FastembedSparse`, sparse vectors | `$TMPDIR/fastembed_cache/models--Qdrant--bm25` | under 1 MB |
+
+Set `HF_HOME` to move the Hugging Face cache. Set `FASTEMBED_CACHE_PATH` to move the fastembed
+cache, which otherwise sits in the system temp directory and can vanish on reboot. Delete a cache
+directory to force a re-download. Tests that load these models skip when the cache lacks them.
+The only model-derived files in git are the two glyph tables under `src/flp_rag/ingest/glyph_tables/`.
+
 ## Tracing conventions
 
 - Root span per request: `rag.request` (kind `CHAIN`). One child per stage. Span tree in spec 7.4.
