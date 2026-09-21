@@ -8,7 +8,7 @@ import typer
 
 from flp_rag import tracing
 from flp_rag.ingest import run as run_mod
-from flp_rag.settings import load_settings
+from flp_rag.settings import Settings, load_settings
 
 app = typer.Typer(no_args_is_help=True, help="Front Line PHP RAG.")
 
@@ -18,10 +18,65 @@ def _not_yet(issue: int) -> None:
     raise typer.Exit(code=2)
 
 
+PREVIEW_CHARS = 200
+
+
+def index_dir(settings: Settings) -> Path:
+    """data/index next to config.yaml, where Stage 7 writes the parent stores."""
+    return settings.config_path.parent / "data" / "index"
+
+
+def query_cache_path(settings: Settings) -> Path:
+    return settings.config_path.parent / settings.embed.cache_path
+
+
 @app.command()
-def ask(question: str) -> None:
-    """Ask one question. Milestone 2 (retrieval only), Milestone 3 (full answer)."""
-    _not_yet(15)
+def ask(
+    question: str,
+    chapter: Annotated[list[int] | None, typer.Option(help="Only these chapter numbers. Repeatable.")] = None,
+    code: Annotated[bool | None, typer.Option("--code/--no-code", help="Only chunks with, or without, code.")] = None,
+    top_k: Annotated[int | None, typer.Option(help="How many chunks. Default retrieval.top_k_dense.")] = None,
+) -> None:
+    """Retrieve chunks for one question (Milestone 2: dense retrieval only, no answer yet)."""
+    from flp_rag.graph.nodes import retrieve as retrieve_mod
+    from flp_rag.stores.embedding_cache import EmbeddingCache
+
+    settings = load_settings()
+    tracing.configure_logging()
+    tracing.configure_tracing(settings)
+    filters = retrieve_mod.RetrievalFilters(chapter_no=tuple(chapter or ()), has_code=code)
+    trace_id = ""
+    try:
+        with EmbeddingCache(query_cache_path(settings)) as cache:
+
+            @tracing.stage("rag.request", kind="CHAIN")
+            def request() -> list:
+                nonlocal trace_id
+                trace_id = format(tracing.current_span().get_span_context().trace_id, "032x")
+                tracing.current_span().set_attribute("rag.question_raw", question[:1000])
+                return retrieve_mod.retrieve_dense(question, settings, filters=filters, top_k=top_k, cache=cache)
+
+            hits = request()
+        texts = retrieve_mod.display_texts(hits, index_dir(settings))
+    finally:
+        tracing.shutdown_tracing()
+
+    if not hits:
+        typer.echo(f"no chunks matched. trace_id={trace_id}")
+        raise typer.Exit(code=2)
+    for i, h in enumerate(hits, 1):
+        p = h.payload
+        pages = f"p. {p['page_printed_start']}" + (
+            f"-{p['page_printed_end']}" if p["page_printed_end"] != p["page_printed_start"] else ""
+        )
+        typer.echo(
+            f"{i}. {h.chunk_id} Chapter {int(p['chapter_no']):02d}: {p['chapter_title']} "
+            f"{pages} score={h.fused_score:.3f}"
+        )
+        preview = texts.get(h.chunk_id, "(display text not found in the parent store)")
+        preview = preview[:PREVIEW_CHARS].replace("\n", " ")
+        typer.echo(f"   {preview}{'...' if len(texts.get(h.chunk_id, '')) > PREVIEW_CHARS else ''}")
+    typer.echo(f"trace_id={trace_id}")
 
 
 @app.command()
