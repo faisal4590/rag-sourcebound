@@ -18,7 +18,7 @@ from flp_rag.tracing import current_span, git_sha, stage
 
 log = structlog.get_logger()
 
-STAGES: tuple[str, ...] = ("parse", "structure", "clean", "chunk", "enrich", "embed")  # later: index, verify
+STAGES: tuple[str, ...] = ("parse", "structure", "clean", "chunk", "enrich", "embed", "index")  # later: verify
 
 DEFAULT_PDF = Path("data/raw/front-line-php-revised-for-php-82.pdf")
 
@@ -66,6 +66,10 @@ def run(
         ),
         "embed": lambda: s06_s07_index.embed(
             doc_id, settings, in_dir=data_dir / "enriched", out_dir=data_dir / "vectors",
+        ),
+        "index": lambda: s06_s07_index.index(
+            doc_id, settings, in_dir=data_dir / "enriched", vectors_dir=data_dir / "vectors",
+            parents_dir=data_dir / "parents", index_dir=data_dir / "index",
         ),
     }
     for name in STAGES:

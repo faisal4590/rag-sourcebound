@@ -84,6 +84,13 @@ def ingest(
             f"ENRICH OK: chunks={enriched.chunks_enriched} index_version={enriched.index_version} "
             f"llm_calls={enriched.llm_calls} cost_usd={enriched.cost_usd} -> {enriched.output_path}"
         )
+    indexed = results.get("index")
+    if indexed is not None:
+        typer.echo(
+            f"INDEX OK: collection={indexed.collection} points={indexed.points_upserted} "
+            f"parents={indexed.parents_stored} chunks={indexed.chunks_stored} "
+            f"alias_switched={indexed.alias_switched} -> {indexed.manifest_path}"
+        )
     embedded = results.get("embed")
     if embedded is not None:
         typer.echo(

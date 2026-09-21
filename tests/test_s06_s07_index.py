@@ -4,6 +4,7 @@ Synthetic tests use a fake dense embedder and the real, tiny BM25 sparse model. 
 test embeds the whole book with bge-m3 and skips when the PDF or the model is absent.
 """
 
+import functools
 import hashlib
 import math
 import os
@@ -239,3 +240,190 @@ def test_every_chunk_finds_itself_with_bge_m3(tmp_path: Path) -> None:
     again = s6.embed(doc_id, settings, in_dir=ENRICHED.parent, out_dir=tmp_path / "vectors",
                      cache_path=tmp_path / "cache.sqlite")
     assert again.cache_hits == 279 and again.cache_misses == 0
+
+
+# =========================================================================== Stage 7
+
+import json
+
+from qdrant_client import QdrantClient
+from qdrant_client.http.exceptions import (
+    ResponseHandlingException,
+    UnexpectedResponse,
+)
+
+from flp_rag.contracts import Parent
+from flp_rag.stores.parent_store import ParentStore
+
+VECTORS = ROOT / "data" / "vectors" / "bca146b9df2d0a2b.parquet"
+PARENTS = ROOT / "data" / "parents" / "bca146b9df2d0a2b.jsonl"
+
+
+def _qdrant_up() -> bool:
+    try:
+        QdrantClient(url=load_settings().index.qdrant_url, timeout=2).get_collections()
+        return True
+    except (ConnectionError, OSError, ResponseHandlingException, UnexpectedResponse):
+        return False
+
+
+needs_qdrant_and_book = pytest.mark.skipif(
+    not (ENRICHED.exists() and VECTORS.exists() and PARENTS.exists() and _qdrant_up()),
+    reason="needs Stage 5 and 6 outputs in data/ and a Qdrant server at index.qdrant_url",
+)
+
+
+def _parent(i: int) -> Parent:
+    return Parent(parent_id=f"d:05:s{i:03d}", chapter_no=5, section_title=f"S{i}", text=f"section {i} text",
+                  page_printed_start=64, page_printed_end=66, token_count=30)
+
+
+@pytest.fixture
+def indexed_dir(chunks_dir: Path, fast_settings) -> Path:
+    """Stage 5 and Stage 6 outputs for five synthetic chunks, with a fake embedder."""
+    tracing.configure_tracing(fast_settings, exporter=InMemorySpanExporter(), force=True)
+    chunks = list(read_jsonl(chunks_dir / "enriched" / "d.jsonl", Chunk))
+    enriched = []
+    for c in chunks:
+        payload = {**c.payload, "index_version": "v1-fake-abcdef01", "parent_id": "d:05:s000" if c.chunk_id.endswith("0") else "d:05:s001",
+                   "created_at": "2026-09-21T10:00:00Z", "chunk_kind": "prose_only", "token_count": c.token_count,
+                   "chunk_config_hash": "abcdef0123456789"}
+        enriched.append(Chunk(c.chunk_id, payload["parent_id"], c.display_text, c.embedding_text, c.token_count, payload))
+    write_jsonl(chunks_dir / "enriched" / "d.jsonl", enriched)
+    write_jsonl(chunks_dir / "parents" / "d.jsonl", [_parent(0), _parent(1)])
+    s6.embed("d", fast_settings, in_dir=chunks_dir / "enriched", out_dir=chunks_dir / "vectors",
+             cache_path=chunks_dir / "cache.sqlite", embedder=FakeEmbedder())
+    return chunks_dir
+
+
+def _fake_dim_settings(fast_settings):
+    return fast_settings.model_copy(update={"embed": fast_settings.embed.model_copy(update={"dim": 8})})
+
+
+def test_parent_store_round_trip_and_orphans(tmp_path: Path) -> None:
+    with ParentStore(tmp_path / "store.sqlite") as store:
+        assert store.put_parents([_parent(0), _parent(1)]) == 2
+        chunk = _chunk(0, "text", ["readonly"])
+        good = Chunk(chunk.chunk_id, "d:05:s000", chunk.display_text, chunk.embedding_text, 3, {**chunk.payload, "token_count": 3})
+        orphan = Chunk("d:05:0099", "d:05:s999", "lost", "", 1, {"token_count": 1})
+        assert store.put_chunks([good, orphan]) == 2
+        assert store.get_parent("d:05:s001") == _parent(1) and store.get_parent("nope") is None
+        assert set(store.get_parents(["d:05:s000", "zzz"])) == {"d:05:s000"}
+        back = store.get_chunk(good.chunk_id)
+        assert back is not None and back.display_text == "text" and back.payload["php_symbols"] == ["readonly"]
+        assert back.token_count == 3 and back.parent_id == "d:05:s000"
+        assert store.count("parents") == 2 and store.count("chunks") == 2
+        assert store.orphan_chunk_ids() == ["d:05:0099"]
+    with ParentStore(tmp_path / "store.sqlite") as store:
+        assert store.count("chunks") == 2  # persists
+
+
+def test_point_ids_are_stable_uuids() -> None:
+    a, b = s6.point_id("d:05:0001"), s6.point_id("d:05:0001")
+    assert a == b and len(a) == 36 and a != s6.point_id("d:05:0002")
+    assert s6.collection_name("v1-bgem3-a8ea0fc5") == "flp_chunks_v1-bgem3-a8ea0fc5"
+
+
+def test_index_builds_collection_store_and_manifest(indexed_dir: Path, fast_settings) -> None:
+    settings = _fake_dim_settings(fast_settings)
+    client = QdrantClient(":memory:")
+    exporter = InMemorySpanExporter()
+    tracing.configure_tracing(settings, exporter=exporter, force=True)
+
+    result = s6.index("d", settings, in_dir=indexed_dir / "enriched", vectors_dir=indexed_dir / "vectors",
+                      parents_dir=indexed_dir / "parents", index_dir=indexed_dir / "index", client=client)
+
+    assert result.collection == "flp_chunks_v1-fake-abcdef01" and result.index_version == "v1-fake-abcdef01"
+    assert (result.points_upserted, result.parents_stored, result.chunks_stored) == (5, 2, 5)
+    assert result.alias_switched is False and s6.alias_target(client, settings.index.alias) is None
+    assert client.count(result.collection, exact=True).count == 5
+    info = client.get_collection(result.collection)
+    assert set(info.config.params.vectors) == {"dense"} and set(info.config.params.sparse_vectors) == {"sparse_bm25"}
+    hit = client.query_points(result.collection, query=[1.0] + [0.0] * 7, using="dense", limit=1).points[0]
+    assert hit.payload["chunk_id"].startswith("d:05:") and hit.payload["chapter_no"] == 5
+    manifest = json.loads(result.manifest_path.read_text())
+    assert manifest["index_version"] == "v1-fake-abcdef01" and manifest["collection"] == result.collection
+    assert manifest["counts"] == {"chunks": 5, "parents": 2, "points": 5, "chunks_with_code": 3}
+    assert manifest["models"]["embed_model"] == "fake/embedder" and manifest["models"]["embed_dim"] == 8
+    assert manifest["chunk_config_hash"] == "abcdef0123456789" and "verify" not in manifest  # from the payload
+    assert manifest["git_sha"] and manifest["created_at"] == "2026-09-21T10:00:00Z"
+    with ParentStore(result.store_path) as store:
+        assert store.count("chunks") == 5 and store.orphan_chunk_ids() == []
+    span = next(s for s in exporter.get_finished_spans() if s.name == "ingest.index")
+    assert span.attributes["rag.points_upserted"] == 5 and span.attributes["rag.alias_switched"] is False
+
+
+def test_index_refuses_to_replace_the_collection_behind_the_alias(indexed_dir: Path, fast_settings) -> None:
+    from qdrant_client import models
+
+    settings = _fake_dim_settings(fast_settings)
+    client = QdrantClient(":memory:")
+    tracing.configure_tracing(settings, exporter=InMemorySpanExporter(), force=True)
+    kwargs = {"in_dir": indexed_dir / "enriched", "vectors_dir": indexed_dir / "vectors",
+              "parents_dir": indexed_dir / "parents", "index_dir": indexed_dir / "index", "client": client}
+    first = s6.index("d", settings, **kwargs)
+    client.update_collection_aliases(change_aliases_operations=[models.CreateAliasOperation(
+        create_alias=models.CreateAlias(collection_name=first.collection, alias_name=settings.index.alias))])
+    with pytest.raises(RuntimeError, match="behind alias"):
+        s6.index("d", settings, **kwargs)
+    assert client.count(first.collection, exact=True).count == 5  # untouched
+
+
+def test_index_fails_on_orphan_parents(indexed_dir: Path, fast_settings) -> None:
+    settings = _fake_dim_settings(fast_settings)
+    write_jsonl(indexed_dir / "parents" / "d.jsonl", [_parent(0)])  # s001 missing
+    tracing.configure_tracing(settings, exporter=InMemorySpanExporter(), force=True)
+    client = QdrantClient(":memory:")
+    with pytest.raises(RuntimeError, match="parents that do not exist"):
+        s6.index("d", settings, in_dir=indexed_dir / "enriched", vectors_dir=indexed_dir / "vectors",
+                 parents_dir=indexed_dir / "parents", index_dir=indexed_dir / "index", client=client)
+    # Nothing was written: no collection, no version directory (which would burn the next version).
+    assert not client.collection_exists("flp_chunks_v1-fake-abcdef01")
+    assert not (indexed_dir / "index" / "v1-fake-abcdef01").exists()
+
+
+def test_index_deletes_a_half_filled_collection_on_upsert_failure(indexed_dir: Path, fast_settings, monkeypatch) -> None:
+    settings = _fake_dim_settings(fast_settings)
+    tracing.configure_tracing(settings, exporter=InMemorySpanExporter(), force=True)
+    client = QdrantClient(":memory:")
+    real_upsert = client.upsert
+    calls = {"n": 0}
+
+    def flaky_upsert(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise ConnectionError("qdrant went away")
+        return real_upsert(*args, **kwargs)
+
+    monkeypatch.setattr(client, "upsert", flaky_upsert)
+    monkeypatch.setattr(s6, "upsert_points", functools.partial(s6.upsert_points, batch_size=2))
+    with pytest.raises(ConnectionError):
+        s6.index("d", settings, in_dir=indexed_dir / "enriched", vectors_dir=indexed_dir / "vectors",
+                 parents_dir=indexed_dir / "parents", index_dir=indexed_dir / "index", client=client)
+    assert not client.collection_exists("flp_chunks_v1-fake-abcdef01")
+
+
+@needs_qdrant_and_book
+def test_index_the_real_book_into_the_live_qdrant(tmp_path: Path) -> None:
+    settings = load_settings()
+    tracing.configure_tracing(settings, exporter=InMemorySpanExporter(), force=True)
+    client = s6.qdrant_client(settings)
+    chunks = list(read_jsonl(ENRICHED, Chunk))
+    version = chunks[0].payload["index_version"]
+    result = s6.index("bca146b9df2d0a2b", settings, in_dir=ENRICHED.parent, vectors_dir=VECTORS.parent,
+                      parents_dir=PARENTS.parent, index_dir=tmp_path / "index", client=client)
+    try:
+        assert result.points_upserted == 279 == client.count(result.collection, exact=True).count
+        assert result.parents_stored == 180 and result.chunks_stored == 279
+        assert s6.alias_target(client, settings.index.alias) != result.collection
+        manifest = json.loads(result.manifest_path.read_text())
+        assert manifest["models"] == {"embed_model": "BAAI/bge-m3", "embed_dim": 1024,
+                                      "sparse_model": "Qdrant/bm25", "rerank_model": "BAAI/bge-reranker-v2-m3"}
+        assert manifest["index_version"] == version
+        # Dense query straight against the new collection: the readonly chapter comes back.
+        from flp_rag.models import get_embeddings
+        q = get_embeddings(settings).embed_query("How do readonly properties work?")
+        top = client.query_points(result.collection, query=q, using="dense", limit=5).points
+        assert any(p.payload["chapter_no"] == 6 for p in top)
+    finally:
+        client.delete_collection(result.collection)
