@@ -202,6 +202,9 @@ Do not start a milestone before the previous "Done when" line passes. Details in
 - Prefer immutable updates: return new records, do not mutate inputs.
 - `data/` and `eval/runs/` are gitignored except `.gitkeep`. The PDF in `data/raw/` is local only.
 - `.env` is never committed. `.env.example` lists the expected keys.
+- A test that talks to the live Qdrant must use a throwaway collection name (rewrite
+  `index_version` to `v999-test-...` in a temp copy of the enriched data) and delete only that.
+  A test once reused the real `index_version` and its cleanup deleted the production collection.
 - Debugging a wrong answer: follow the runbook in spec 7.11, starting from the `trace_id` in the
   response. Then add the case to the golden dataset and rerun `make eval`.
 - Commit messages: `<type>: <description>` with types feat, fix, refactor, docs, test, chore, perf, ci.

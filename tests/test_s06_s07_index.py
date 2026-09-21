@@ -405,21 +405,30 @@ def test_index_deletes_a_half_filled_collection_on_upsert_failure(indexed_dir: P
 
 @needs_qdrant_and_book
 def test_index_the_real_book_into_the_live_qdrant(tmp_path: Path) -> None:
+    """Indexes the real vectors into the live server under a throwaway index version, so the
+    production collection (the real index_version) is never touched or deleted."""
     settings = load_settings()
     tracing.configure_tracing(settings, exporter=InMemorySpanExporter(), force=True)
     client = s6.qdrant_client(settings)
     chunks = list(read_jsonl(ENRICHED, Chunk))
-    version = chunks[0].payload["index_version"]
-    result = s6.index("bca146b9df2d0a2b", settings, in_dir=ENRICHED.parent, vectors_dir=VECTORS.parent,
+    real_version = chunks[0].payload["index_version"]
+    test_version = "v999-test-" + tmp_path.name[-8:].lower()
+    rewritten = [Chunk(c.chunk_id, c.parent_id, c.display_text, c.embedding_text, c.token_count,
+                       {**c.payload, "index_version": test_version}) for c in chunks]
+    write_jsonl(tmp_path / "enriched" / "bca146b9df2d0a2b.jsonl", rewritten)
+    before = {c.name for c in client.get_collections().collections}
+
+    result = s6.index("bca146b9df2d0a2b", settings, in_dir=tmp_path / "enriched", vectors_dir=VECTORS.parent,
                       parents_dir=PARENTS.parent, index_dir=tmp_path / "index", client=client)
     try:
+        assert result.collection == f"flp_chunks_{test_version}" != f"flp_chunks_{real_version}"
         assert result.points_upserted == 279 == client.count(result.collection, exact=True).count
         assert result.parents_stored == 180 and result.chunks_stored == 279
         assert s6.alias_target(client, settings.index.alias) != result.collection
         manifest = json.loads(result.manifest_path.read_text())
         assert manifest["models"] == {"embed_model": "BAAI/bge-m3", "embed_dim": 1024,
                                       "sparse_model": "Qdrant/bm25", "rerank_model": "BAAI/bge-reranker-v2-m3"}
-        assert manifest["index_version"] == version
+        assert manifest["index_version"] == test_version
         # Dense query straight against the new collection: the readonly chapter comes back.
         from flp_rag.models import get_embeddings
         q = get_embeddings(settings).embed_query("How do readonly properties work?")
@@ -427,3 +436,5 @@ def test_index_the_real_book_into_the_live_qdrant(tmp_path: Path) -> None:
         assert any(p.payload["chapter_no"] == 6 for p in top)
     finally:
         client.delete_collection(result.collection)
+    # Every collection that existed before still exists: the test cleaned up only its own.
+    assert before <= {c.name for c in client.get_collections().collections}
