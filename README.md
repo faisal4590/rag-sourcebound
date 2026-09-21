@@ -23,7 +23,15 @@ curl -sSL -o q.tar.gz https://github.com/qdrant/qdrant/releases/download/v1.19.1
 tar xzf q.tar.gz && rm q.tar.gz && ./qdrant --version
 ```
 
-Pick the `x86_64` asset on an Intel Mac. `.local/` is gitignored. Qdrant storage lives in `.local/qdrant/storage`, Phoenix data in `.local/phoenix`.
+Pick the `x86_64` asset on an Intel Mac. `.local/` is gitignored.
+
+The release binary has no web UI. To get http://localhost:6333/dashboard, unzip the UI build so
+that `.local/qdrant/static/index.html` exists, then restart with `make down-local && make up-local`:
+
+```bash
+curl -sSL -o /tmp/dist.zip https://github.com/qdrant/qdrant-web-ui/releases/latest/download/dist-qdrant.zip
+unzip -qo /tmp/dist.zip -d /tmp/qdrant-ui && mv /tmp/qdrant-ui/dist .local/qdrant/static
+``` Qdrant storage lives in `.local/qdrant/storage`, Phoenix data in `.local/phoenix`.
 
 ## Layout
 

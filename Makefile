@@ -9,6 +9,11 @@ down:
 
 # ---- services: native path (no Docker) -------------------------------------
 # Qdrant: native binary in .local/qdrant/ (download from github.com/qdrant/qdrant/releases).
+# Web UI at /dashboard: Qdrant serves ./static relative to its working directory. Unzip
+# dist-qdrant.zip from github.com/qdrant/qdrant-web-ui/releases so that
+# .local/qdrant/static/index.html exists. Optional.
+# Phoenix: `uv run --extra local` installs the server extra on demand, so a plain `uv sync`
+# that drops the extra cannot break `make up-local`.
 # Phoenix: `uv sync --extra local` installs the server; `phoenix serve` runs it.
 LOCAL   := .local
 QDRANT  := $(LOCAL)/qdrant/qdrant
@@ -17,7 +22,7 @@ up-local:      ## start Qdrant (:6333) and Phoenix (:6006) as background process
 	@test -x $(QDRANT) || { echo "missing $(QDRANT); see README"; exit 1; }
 	@mkdir -p $(LOCAL)/qdrant/storage $(LOCAL)/phoenix
 	@cd $(LOCAL)/qdrant && nohup ./qdrant > qdrant.log 2>&1 & echo $$! > $(LOCAL)/qdrant.pid
-	@PHOENIX_WORKING_DIR=$(abspath $(LOCAL)/phoenix) nohup uv run phoenix serve > $(LOCAL)/phoenix/phoenix.log 2>&1 & echo $$! > $(LOCAL)/phoenix.pid
+	@PHOENIX_WORKING_DIR=$(abspath $(LOCAL)/phoenix) nohup uv run --extra local phoenix serve > $(LOCAL)/phoenix/phoenix.log 2>&1 & echo $$! > $(LOCAL)/phoenix.pid
 	@echo "qdrant pid $$(cat $(LOCAL)/qdrant.pid), phoenix pid $$(cat $(LOCAL)/phoenix.pid)"
 
 down-local:    ## stop the native processes
