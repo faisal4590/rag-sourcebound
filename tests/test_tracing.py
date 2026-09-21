@@ -214,3 +214,12 @@ def test_configure_logging_binds_processor() -> None:
     tracing.configure_logging()
     processors = structlog.get_config()["processors"]
     assert tracing.add_trace_context in processors
+
+
+def test_logger_writes_to_the_current_stdout(capsys: pytest.CaptureFixture[str]) -> None:
+    # The stream is looked up per call, so a swapped-and-closed stdout never breaks later logs.
+    tracing.configure_logging()
+    structlog.get_logger().info("first")
+    assert "first" in capsys.readouterr().out
+    structlog.get_logger().warning("second")
+    assert "second" in capsys.readouterr().out

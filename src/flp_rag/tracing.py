@@ -271,6 +271,16 @@ def add_trace_context(
     return event_dict
 
 
+class _StdoutLogger:
+    """Writes to whatever `sys.stdout` is at call time. structlog's PrintLogger binds the stream
+    once, which breaks after a test runner or a redirect swaps and closes it."""
+
+    def msg(self, message: str) -> None:
+        print(message, file=sys.stdout, flush=True)
+
+    log = debug = info = warning = warn = error = critical = exception = fatal = msg
+
+
 def configure_logging(level: int = logging.INFO) -> None:
     """structlog with JSON output to stdout. Every line carries trace_id and span_id."""
     structlog.configure(
@@ -284,6 +294,6 @@ def configure_logging(level: int = logging.INFO) -> None:
             structlog.processors.JSONRenderer(),
         ],
         wrapper_class=structlog.make_filtering_bound_logger(level),
-        logger_factory=structlog.PrintLoggerFactory(file=sys.stdout),
+        logger_factory=lambda *_args: _StdoutLogger(),
         cache_logger_on_first_use=False,
     )
