@@ -123,9 +123,10 @@ def test_existing_index_is_found_only_on_full_match(tmp_path: Path) -> None:
         d.mkdir()
         (d / "manifest.json").write_text(json.dumps({"index_version": name, **fields}))
 
-    manifest("v1-a", doc_id="doc", chunk_config_hash="hash", verify={"passed": True})
-    manifest("v2-b", doc_id="doc", chunk_config_hash="other", verify={"passed": True})
+    manifest("v1-a", doc_id="doc", chunk_config_hash="hash", verify={"passed": True, "alias_switched": True})
+    manifest("v2-b", doc_id="doc", chunk_config_hash="other", verify={"passed": True, "alias_switched": True})
     manifest("v3-c", doc_id="doc", chunk_config_hash="hash", verify={"passed": False})
+    manifest("v4-d", doc_id="doc", chunk_config_hash="hash", verify={"passed": True, "alias_switched": False})
     (tmp_path / "junk").mkdir()
     (tmp_path / "junk" / "manifest.json").write_text("{not json")
     (tmp_path / "list").mkdir()
@@ -342,7 +343,7 @@ def test_second_run_is_already_indexed_when_manifest_matches(tmp_path: Path) -> 
     idx.mkdir(parents=True)
     (idx / "manifest.json").write_text(json.dumps({
         "index_version": "v9-test", "doc_id": "bca146b9df2d0a2b",
-        "chunk_config_hash": settings.chunk_config_hash, "verify": {"passed": True},
+        "chunk_config_hash": settings.chunk_config_hash, "verify": {"passed": True, "alias_switched": True},
     }))
     tracing.configure_tracing(settings, exporter=InMemorySpanExporter(), force=True)
 

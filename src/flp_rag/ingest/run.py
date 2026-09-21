@@ -1,8 +1,8 @@
 # Runs Stages 1-8 in order. Writes data/<stage>/*.jsonl. Entry point for `make ingest`.
 """Ingestion runner.
 
-Opens the root span `ingest.run` and calls the stages in order. Until issue #14 lands, only
-Stage 1 is wired; `only="parse"` runs it alone.
+Opens the root span `ingest.run` and calls Stages 1-8 in order. `only=<stage>` runs one stage.
+A failed verification does not raise: the CLI prints the failed checks and exits with code 1.
 """
 
 import time
@@ -12,13 +12,21 @@ from typing import Any
 
 import structlog
 
-from flp_rag.ingest import s01_parse, s02_structure, s03_clean, s04_chunk, s05_enrich, s06_s07_index
+from flp_rag.ingest import (
+    s01_parse,
+    s02_structure,
+    s03_clean,
+    s04_chunk,
+    s05_enrich,
+    s06_s07_index,
+    s08_verify,
+)
 from flp_rag.settings import Settings
 from flp_rag.tracing import current_span, git_sha, stage
 
 log = structlog.get_logger()
 
-STAGES: tuple[str, ...] = ("parse", "structure", "clean", "chunk", "enrich", "embed", "index")  # later: verify
+STAGES: tuple[str, ...] = ("parse", "structure", "clean", "chunk", "enrich", "embed", "index", "verify")
 
 DEFAULT_PDF = Path("data/raw/front-line-php-revised-for-php-82.pdf")
 
@@ -71,6 +79,10 @@ def run(
             doc_id, settings, in_dir=data_dir / "enriched", vectors_dir=data_dir / "vectors",
             parents_dir=data_dir / "parents", index_dir=data_dir / "index",
         ),
+        "verify": lambda: s08_verify.verify(
+            doc_id, settings, in_dir=data_dir / "enriched", parsed_dir=data_dir / "parsed",
+            index_dir=data_dir / "index",
+        ),
     }
     for name in STAGES:
         if only is not None and name != only:
@@ -79,6 +91,16 @@ def run(
         if name == "parse" and results[name].already_indexed is not None:
             outcome = "already_indexed"
             break
+        if name in ("enrich", "index", "verify"):
+            span.set_attribute("rag.index_version", results[name].index_version)
+        if name == "verify" and not results[name].passed:
+            outcome = "verify_failed"
     span.set_attribute("rag.duration_s", round(time.perf_counter() - started, 3))
     span.set_attribute("rag.result", outcome)
     return results
+
+
+def verify_passed(results: dict[str, Any]) -> bool:
+    """False only when the verify stage ran and failed. Exit code 1 belongs to the caller."""
+    verified = results.get("verify")
+    return verified is None or bool(verified.passed)

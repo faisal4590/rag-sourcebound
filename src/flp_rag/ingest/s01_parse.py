@@ -181,7 +181,9 @@ def build_chapter_table(
 
 
 def find_existing_index(index_dir: Path, doc_id: str, chunk_config_hash: str) -> str | None:
-    """Index version of a passed ingestion with the same document and chunking, or None."""
+    """Index version of a verified, alias-switched ingestion with the same document and chunking,
+    or None. A manifest that passed but never recorded the switch is not "already indexed": the
+    next run re-verifies it, which is cheap and idempotent."""
     if not index_dir.is_dir():
         return None
     for manifest_path in sorted(index_dir.glob("*/manifest.json")):
@@ -193,10 +195,12 @@ def find_existing_index(index_dir: Path, doc_id: str, chunk_config_hash: str) ->
         if not isinstance(m, dict):
             log.warning("manifest is not an object", path=str(manifest_path))
             continue
+        verify = m.get("verify") or {}
         if (
             m.get("doc_id") == doc_id
             and m.get("chunk_config_hash") == chunk_config_hash
-            and (m.get("verify") or {}).get("passed") is True
+            and verify.get("passed") is True
+            and verify.get("alias_switched") is True
         ):
             return str(m.get("index_version") or manifest_path.parent.name)
     return None
