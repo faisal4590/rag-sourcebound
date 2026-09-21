@@ -84,13 +84,6 @@ def ingest(
             f"ENRICH OK: chunks={enriched.chunks_enriched} index_version={enriched.index_version} "
             f"llm_calls={enriched.llm_calls} cost_usd={enriched.cost_usd} -> {enriched.output_path}"
         )
-    indexed = results.get("index")
-    if indexed is not None:
-        typer.echo(
-            f"INDEX OK: collection={indexed.collection} points={indexed.points_upserted} "
-            f"parents={indexed.parents_stored} chunks={indexed.chunks_stored} "
-            f"alias_switched={indexed.alias_switched} -> {indexed.manifest_path}"
-        )
     embedded = results.get("embed")
     if embedded is not None:
         typer.echo(
@@ -100,6 +93,32 @@ def ingest(
             f"batches={embedded.batches} self_retrieval_failures={embedded.self_retrieval_failures} "
             f"-> {embedded.output_path}"
         )
+    indexed = results.get("index")
+    if indexed is not None:
+        typer.echo(
+            f"INDEX OK: collection={indexed.collection} points={indexed.points_upserted} "
+            f"parents={indexed.parents_stored} chunks={indexed.chunks_stored} "
+            f"alias_switched={indexed.alias_switched} -> {indexed.manifest_path}"
+        )
+    verified = results.get("verify")
+    if verified is not None:
+        if verified.passed:
+            typer.echo(
+                f"VERIFY OK: {verified.smoke_hits}/{verified.smoke_total} smoke queries hit; "
+                f"alias {settings.index.alias} -> {verified.collection}"
+                + (f" (previous {verified.previous_collection})" if verified.previous_collection else "")
+                + (f"; pruned {verified.pruned}" if verified.pruned else "")
+            )
+        else:
+            typer.echo(
+                f"VERIFY FAILED: {', '.join(verified.failed_checks)}; "
+                f"smoke {verified.smoke_hits}/{verified.smoke_total}; alias unchanged -> {verified.manifest_path}",
+                err=True,
+            )
+        for flag in verified.flags:
+            typer.echo(f"  flag: {flag}")
+    if not run_mod.verify_passed(results):
+        raise typer.Exit(code=1)
 
 
 @app.command(name="eval")

@@ -421,6 +421,15 @@ def build_manifest(
     }
 
 
+def _manifest_verify(manifest_path: Path) -> dict[str, Any]:
+    if not manifest_path.exists():
+        return {}
+    try:
+        return dict(json.loads(manifest_path.read_text()).get("verify") or {})
+    except (OSError, ValueError):
+        return {}
+
+
 def _single_index_version(chunks: Sequence[Chunk]) -> str:
     versions = {str(c.payload.get("index_version", "")) for c in chunks}
     if len(versions) != 1 or "" in versions:
@@ -457,11 +466,26 @@ def index(
         raise RuntimeError(f"{len(missing_rows)} chunks have no vector row, e.g. {missing_rows[:3]}")
 
     client = client or qdrant_client(settings)
+    version_dir = index_dir / index_version
+    store_path = version_dir / STORE_FILE
+    manifest_path = version_dir / MANIFEST_FILE
     current = alias_target(client, settings.index.alias)
     if current == collection:
+        verified = _manifest_verify(manifest_path)
+        if verified.get("passed") is True:
+            # A previous run verified this collection and switched the alias, but did not get to
+            # record the switch (or Stage 1 was forced). Nothing to rebuild; Stage 8 re-verifies.
+            log.warning("collection is already behind the alias and verified; skipping rebuild",
+                        collection=collection)
+            return IndexResult(
+                doc_id=doc_id, index_version=index_version, collection=collection,
+                points_upserted=client.count(collection, exact=True).count,
+                parents_stored=len(parents), chunks_stored=len(chunks), alias_switched=True,
+                manifest_path=manifest_path, store_path=store_path,
+            )
         raise RuntimeError(
-            f"{collection} is the collection behind alias {settings.index.alias}; "
-            "a new ingestion run must get a new index version"
+            f"{collection} is the collection behind alias {settings.index.alias} but its manifest "
+            "does not record a passed verification; a new ingestion run must get a new index version"
         )
     create_collection(client, collection, dim)
     try:
@@ -474,8 +498,6 @@ def index(
         client.delete_collection(collection)
         raise
 
-    version_dir = index_dir / index_version
-    store_path = version_dir / STORE_FILE
     if store_path.exists():
         store_path.unlink()
     with ParentStore(store_path) as store:
@@ -489,7 +511,6 @@ def index(
         chunks=chunks, parents=parents, vector_meta=vector_meta, points=points,
         created_at=str(chunks[0].payload.get("created_at", "")),
     )
-    manifest_path = version_dir / MANIFEST_FILE
     manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n")
     return IndexResult(
         doc_id=doc_id,
