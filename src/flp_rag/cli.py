@@ -84,6 +84,15 @@ def ingest(
             f"ENRICH OK: chunks={enriched.chunks_enriched} index_version={enriched.index_version} "
             f"llm_calls={enriched.llm_calls} cost_usd={enriched.cost_usd} -> {enriched.output_path}"
         )
+    embedded = results.get("embed")
+    if embedded is not None:
+        typer.echo(
+            f"EMBED OK: vectors={embedded.vectors_total} dim={embedded.dense_dim} "
+            f"model={embedded.embed_model} sparse={embedded.sparse_model} "
+            f"cache_hits={embedded.cache_hits} cache_misses={embedded.cache_misses} "
+            f"batches={embedded.batches} self_retrieval_failures={embedded.self_retrieval_failures} "
+            f"-> {embedded.output_path}"
+        )
 
 
 @app.command(name="eval")

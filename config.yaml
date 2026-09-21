@@ -51,6 +51,8 @@ embed:
   batch_size: 32
   sparse_model: Qdrant/bm25
   cache_path: data/cache/embeddings.sqlite
+  retry_attempts: 3              # hosted API calls; local models never fail this way
+  retry_backoff_s: 1.0           # doubles per attempt
 
 index:
   qdrant_url: http://localhost:6333

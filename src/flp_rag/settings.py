@@ -99,6 +99,8 @@ class EmbedConfig(_Section):
     batch_size: int = Field(gt=0)
     sparse_model: str
     cache_path: Path
+    retry_attempts: int = Field(default=3, ge=1)
+    retry_backoff_s: float = Field(default=1.0, ge=0)
 
 
 class IndexConfig(_Section):
