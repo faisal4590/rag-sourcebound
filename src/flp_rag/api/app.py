@@ -48,6 +48,7 @@ from flp_rag.api.schemas import (
 )
 from flp_rag.contracts import Response
 from flp_rag.graph.build import Deps, compile_default
+from flp_rag.graph.nodes.guard_input import InputRejected
 from flp_rag.graph.nodes.retrieve import RetrievalFilters
 from flp_rag.graph.state import RagState, initial_state
 from flp_rag.ingest.s06_s07_index import (
@@ -194,7 +195,11 @@ def create_app(
         )
         return JSONResponse(status_code=422, content=body.model_dump())
 
-    @app.post("/ask", response_model=AskResponse, responses={504: {"model": ErrorResponse}})
+    @app.post(
+        "/ask",
+        response_model=AskResponse,
+        responses={400: {"model": ErrorResponse}, 504: {"model": ErrorResponse}},
+    )
     async def ask(request: Request, body: AskRequest) -> Any:
         st: AppState = request.app.state.rag
         span = tracing.current_span()
@@ -220,6 +225,12 @@ def create_app(
             final = await asyncio.wait_for(
                 st.graph.ainvoke(state), timeout=st.settings.api.timeout_s
             )
+        except InputRejected as exc:
+            # Stage 10 rule 1: the exact message, HTTP 400, trace id included.
+            span.set_attribute("rag.status", "error")
+            span.set_attribute("rag.abstain_reason", "guard.rejected")
+            body_out = ErrorResponse(trace_id=request.state.trace_id, detail=str(exc))
+            return JSONResponse(status_code=400, content=body_out.model_dump())
         except TimeoutError:
             span.set_attribute("rag.status", "error")
             span.set_attribute("rag.abstain_reason", "timeout")
