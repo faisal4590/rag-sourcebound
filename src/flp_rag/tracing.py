@@ -136,6 +136,11 @@ def _tracer() -> trace.Tracer:
     return provider.get_tracer(SERVICE_NAME)
 
 
+def get_tracer() -> trace.Tracer:
+    """The project tracer, for the one caller that opens the root span by hand (Stage 9)."""
+    return _tracer()
+
+
 def current_span() -> Span | trace.Span:
     """The active span, for attributes that are not part of a stage's output type."""
     return trace.get_current_span()

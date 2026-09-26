@@ -35,16 +35,16 @@ status:        ## check both services answer
 
 # ---- pipeline --------------------------------------------------------------
 ingest:        ## run Stages 1-8, print the verification report
-	flp ingest
+	uv run flp ingest
 
 serve:         ## start the API on port 8000
-	uvicorn flp_rag.api.app:app --reload --port 8000
+	uv run uvicorn flp_rag.api.app:app --reload --port 8000
 
 eval:          ## run the harness, compare with eval/baseline.json, exit 1 on regression
-	flp eval
+	uv run flp eval
 
 test:          ## run the "Done when" tests
-	pytest -q
+	uv run pytest -q
 
 calibrate:     ## threshold sweep of spec Section 8.4
-	flp calibrate
+	uv run flp calibrate

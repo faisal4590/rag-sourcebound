@@ -11,6 +11,7 @@ Vectors are stored as little-endian float32 bytes.
 
 import hashlib
 import sqlite3
+import threading
 from array import array
 from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
@@ -55,12 +56,17 @@ def _now() -> str:
 
 
 class EmbeddingCache:
-    """Open with `with EmbeddingCache(path) as cache:`."""
+    """Open with `with EmbeddingCache(path) as cache:`.
+
+    One connection, usable from any thread: the API opens the cache at startup and LangGraph
+    runs sync nodes in a worker pool, so `check_same_thread` is off and a lock serialises access.
+    """
 
     def __init__(self, path: Path | str) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(self.path)
+        self._lock = threading.Lock()
+        self._conn = sqlite3.connect(self.path, check_same_thread=False)
         self._conn.executescript(_SCHEMA)
 
     def __enter__(self) -> Self:
@@ -70,7 +76,8 @@ class EmbeddingCache:
         self.close()
 
     def close(self) -> None:
-        self._conn.close()
+        with self._lock:
+            self._conn.close()
 
     # ---- passages
 
@@ -82,9 +89,10 @@ class EmbeddingCache:
         for start in range(0, len(keys), 500):
             batch = keys[start : start + 500]
             marks = ",".join("?" * len(batch))
-            rows = self._conn.execute(
-                f"SELECT key, vector FROM dense WHERE key IN ({marks})", batch
-            ).fetchall()
+            with self._lock:
+                rows = self._conn.execute(
+                    f"SELECT key, vector FROM dense WHERE key IN ({marks})", batch
+                ).fetchall()
             for key, blob in rows:
                 found[wanted[key]] = _unpack(blob)
         return found
@@ -94,7 +102,7 @@ class EmbeddingCache:
             (cache_key(model, text), model, len(vector), _pack(vector), _now())
             for text, vector in pairs
         ]
-        with self._conn:
+        with self._lock, self._conn:
             self._conn.executemany(
                 "INSERT OR REPLACE INTO dense (key, model, dim, vector, created_at) VALUES (?, ?, ?, ?, ?)",
                 rows,
@@ -104,13 +112,14 @@ class EmbeddingCache:
     # ---- queries
 
     def get_query(self, model: str, question: str) -> list[float] | None:
-        row = self._conn.execute(
-            "SELECT vector FROM queries WHERE question = ? AND model = ?", (question, model)
-        ).fetchone()
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT vector FROM queries WHERE question = ? AND model = ?", (question, model)
+            ).fetchone()
         return _unpack(row[0]) if row else None
 
     def put_query(self, model: str, question: str, vector: Sequence[float]) -> None:
-        with self._conn:
+        with self._lock, self._conn:
             self._conn.execute(
                 "INSERT OR REPLACE INTO queries (question, model, dim, vector, created_at) "
                 "VALUES (?, ?, ?, ?, ?)",
@@ -122,4 +131,5 @@ class EmbeddingCache:
     def count(self, table: str = "dense") -> int:
         if table not in ("dense", "queries"):
             raise ValueError(f"unknown table {table!r}")
-        return int(self._conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
+        with self._lock:
+            return int(self._conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])

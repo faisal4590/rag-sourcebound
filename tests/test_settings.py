@@ -103,6 +103,7 @@ def test_every_spec_section_is_typed() -> None:
     assert s.verify.smoke_queries == Path("eval/smoke_queries.jsonl")
     assert s.api.port == 8000
     assert s.api.timeout_s == 20
+    assert s.api.health_timeout_s == 2
     assert s.guard.max_chars == 2000
     assert s.guard.rate_limit_per_min == 30
     assert s.query.history_turns == 3
