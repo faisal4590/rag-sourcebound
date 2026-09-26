@@ -120,6 +120,7 @@ class VerifyConfig(_Section):
 class ApiConfig(_Section):
     port: int = Field(gt=0, lt=65536)
     timeout_s: float = Field(gt=0)
+    health_timeout_s: float = Field(gt=0)
 
 
 class GuardConfig(_Section):

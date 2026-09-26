@@ -66,6 +66,7 @@ verify:
 api:
   port: 8000
   timeout_s: 20
+  health_timeout_s: 2
 
 guard:
   max_chars: 2000
