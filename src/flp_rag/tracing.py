@@ -101,7 +101,26 @@ def configure_tracing(
     _State.capture_content = settings.trace.capture_content
     _State.content_max_chars = settings.trace.content_max_chars
     _State.attr_string_max_chars = settings.trace.attr_string_max_chars
+    if settings.trace.instrument_langchain:
+        instrument_langchain(provider)
     return provider
+
+
+def instrument_langchain(provider: TracerProvider) -> bool:
+    """Opt-in OpenInference spans for LangChain and LangGraph internals, attached to our
+    provider so they land in the same trace. Call after `configure_tracing`. Returns whether
+    the instrumentor was installed."""
+    try:
+        from openinference.instrumentation.langchain import LangChainInstrumentor
+    except ImportError:  # pragma: no cover
+        return False
+    instrumentor = LangChainInstrumentor()
+    # The instrumentor is a process-wide singleton bound to one provider. After a forced
+    # reconfigure it must be re-attached, or LangChain spans keep going to the old provider.
+    if instrumentor.is_instrumented_by_opentelemetry:
+        instrumentor.uninstrument()
+    instrumentor.instrument(tracer_provider=provider)
+    return True
 
 
 def shutdown_tracing() -> None:

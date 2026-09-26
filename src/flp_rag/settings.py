@@ -201,6 +201,7 @@ class TraceConfig(_Section):
     content_max_chars: int = Field(default=20_000, gt=0)
     attr_string_max_chars: int = Field(default=1_000, gt=0)
     export_timeout_s: float = Field(default=10, gt=0)
+    instrument_langchain: bool = False
 
 
 class Price(_Section):
