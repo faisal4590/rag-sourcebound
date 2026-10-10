@@ -84,8 +84,9 @@ _Avoid_: font map, cmap, ToUnicode override
 
 **Section**:
 The blocks from one heading to the next inside a chapter. The blocks before the first heading of a
-chapter form the chapter intro, a section with an empty title. Chunks never cross a section
-boundary; a section smaller than the minimum chunk size is one chunk.
+chapter form the chapter intro, a section with an empty title. A section smaller than the
+minimum chunk size joins the previous section of its chapter (the intro joins the first section)
+and takes its title; alone in its chapter it is one chunk. Chunks never cross a section boundary.
 _Avoid_: subsection, topic
 
 ### Retrieval units
@@ -128,12 +129,14 @@ _Avoid_: row, text line
 
 **Block**:
 One typed unit of the book: chapter title, heading, callout, code, or paragraph. Built from
-consecutive lines of one type on one page, then merged across a page break for code and callouts.
+consecutive lines of one type on one page, then merged across a page break for code, callouts, and a
+paragraph that stops mid-sentence at the bottom of the page.
 _Avoid_: segment, element, node
 
 **Callout**:
 A block built from one callout box: the title line first, then the body lines. Keeps its own
-type so retrieval can tell a sidebar from the main text.
+type so retrieval can tell a sidebar from the main text. A callout under the minimum chunk size
+joins the chunk beside it, because a bare link or an ellipsis has nothing to match against.
 _Avoid_: sidebar, note, aside, tip
 
 **Inline code**:
