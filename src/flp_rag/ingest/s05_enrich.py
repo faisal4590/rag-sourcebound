@@ -130,6 +130,7 @@ class ChunkPayload(BaseModel):
     chapter_no: int
     chapter_title: str
     section_title: str
+    section_titles: list[str]
     page_pdf_start: int
     page_pdf_end: int
     page_printed_start: int

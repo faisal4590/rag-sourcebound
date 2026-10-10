@@ -5,7 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from flp_rag.settings import ABSTAIN_TEXT, Settings, load_settings
+from flp_rag.settings import (
+    ABSTAIN_TEXT,
+    INGEST_SOURCE_FILES,
+    Settings,
+    chunk_config_hash,
+    load_settings,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 SHIPPED = (ROOT / "config.yaml").read_text()
@@ -82,6 +88,8 @@ def test_every_spec_section_is_typed() -> None:
     assert s.parse.header_font_size_pt == 8
     assert s.parse.skip_pages == (1, 2, 3, 4, 5, 6, 7, 8, 12, 156, 232)
     assert s.structure.line_tolerance_pt == 2
+    assert s.structure.word_join_max_gap_pt == 1.0
+    assert "." in s.structure.sentence_end_chars and s.structure.bullet_chars == ("•",)
     assert s.structure.paragraph_gap_factor == 1.5
     assert s.structure.mono_fonts == ("JetBrainsMono", "IBMPlexMono")
     assert s.structure.heading_font == "Staatliches"
@@ -93,6 +101,7 @@ def test_every_spec_section_is_typed() -> None:
     assert s.chunk.code_max_tokens == 900
     assert s.chunk.overlap_paragraph_max_tokens == 80
     assert s.chunk.parent_max_tokens == 2500
+    assert s.chunk.small_merge_max_tokens == 900
     assert s.enrich.symbols_max == 40
     assert s.enrich.contextual_summary is False
     assert s.enrich.hypothetical_questions == 0
@@ -104,7 +113,7 @@ def test_every_spec_section_is_typed() -> None:
     assert s.index.qdrant_url == "http://localhost:6333"
     assert s.index.alias == "flp_chunks_current"
     assert s.index.keep_previous == 1
-    assert s.verify.min_chunks_per_page == 0.5
+    assert s.verify.min_chapter_coverage == 0.99
     assert s.verify.smoke_queries == Path("eval/smoke_queries.jsonl")
     assert s.api.port == 8000
     assert s.api.timeout_s == 20
@@ -208,7 +217,7 @@ def test_chunk_config_hash_ignores_spelled_out_defaults(tmp_path: Path) -> None:
     assert without.chunk_config_hash == load_settings().chunk_config_hash
 
 
-def test_chunk_config_hash_changes_only_with_chunk_section(tmp_path: Path) -> None:
+def test_chunk_config_hash_changes_with_the_ingestion_sections_only(tmp_path: Path) -> None:
     base = load_settings()
     (tmp_path / "x").mkdir()
     other = _load(tmp_path / "x", SHIPPED.replace("retention_days: 30", "retention_days: 31"))
@@ -216,3 +225,21 @@ def test_chunk_config_hash_changes_only_with_chunk_section(tmp_path: Path) -> No
     (tmp_path / "y").mkdir()
     changed = _load(tmp_path / "y", SHIPPED.replace("target_tokens: 350", "target_tokens: 400"))
     assert changed.chunk_config_hash != base.chunk_config_hash
+    (tmp_path / "z").mkdir()
+    structure = _load(tmp_path / "z", SHIPPED.replace("line_tolerance_pt: 2", "line_tolerance_pt: 3"))
+    assert structure.chunk_config_hash != base.chunk_config_hash
+
+
+def test_chunk_config_hash_changes_with_the_ingestion_source(tmp_path: Path) -> None:
+    s = load_settings()
+    sections = (s.parse, s.structure, s.clean, s.chunk)
+    assert chunk_config_hash(*sections) == s.chunk_config_hash
+    for name in ("a", "b"):
+        d = tmp_path / name
+        d.mkdir()
+        for f in INGEST_SOURCE_FILES:
+            (d / f).write_text(f"# {f}\n" + ("x = 1\n" if name == "b" and f == "s04_chunk.py" else ""))
+    a = chunk_config_hash(*sections, source_dir=tmp_path / "a")
+    b = chunk_config_hash(*sections, source_dir=tmp_path / "b")
+    assert re.fullmatch(r"[0-9a-f]{16}", a) and a != b
+    assert a == chunk_config_hash(*sections, source_dir=tmp_path / "a")

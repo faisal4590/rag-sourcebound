@@ -112,6 +112,7 @@ def ingest(
             f"STRUCTURE OK: blocks={struct.blocks_total} by_type={struct.blocks_by_type} "
             f"chapters={struct.chapters_found} code_merged={struct.code_blocks_merged_across_pages} "
             f"callouts_merged={struct.callouts_merged_across_pages} "
+            f"paragraphs_merged={struct.paragraphs_merged_across_pages} "
             f"labels_dropped={struct.labels_dropped} -> {struct.output_path}"
         )
     cleaned = results.get("clean")

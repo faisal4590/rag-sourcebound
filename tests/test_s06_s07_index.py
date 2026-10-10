@@ -232,21 +232,21 @@ def test_every_chunk_finds_itself_with_bge_m3(tmp_path: Path) -> None:
     result = s6.embed(doc_id, settings, in_dir=ENRICHED.parent, out_dir=tmp_path / "vectors",
                       cache_path=tmp_path / "cache.sqlite")
 
-    assert result.vectors_total == len(chunks) == 279
+    assert result.vectors_total == len(chunks) == 202
     assert result.dense_dim == 1024 and result.embed_model == "BAAI/bge-m3"
     assert result.self_retrieval_failures == 0
     rows, meta = s6.read_vectors(result.output_path)
-    assert meta["dim"] == "1024" and len(rows) == 279
+    assert meta["dim"] == "1024" and len(rows) == 202
     again = s6.embed(doc_id, settings, in_dir=ENRICHED.parent, out_dir=tmp_path / "vectors",
                      cache_path=tmp_path / "cache.sqlite")
-    assert again.cache_hits == 279 and again.cache_misses == 0
+    assert again.cache_hits == 202 and again.cache_misses == 0
 
 
 # =========================================================================== Stage 7
 
 import json
 
-from qdrant_client import QdrantClient
+from qdrant_client import QdrantClient, models
 from qdrant_client.http.exceptions import (
     ResponseHandlingException,
     UnexpectedResponse,
@@ -339,6 +339,8 @@ def test_index_builds_collection_store_and_manifest(indexed_dir: Path, fast_sett
     assert client.count(result.collection, exact=True).count == 5
     info = client.get_collection(result.collection)
     assert set(info.config.params.vectors) == {"dense"} and set(info.config.params.sparse_vectors) == {"sparse_bm25"}
+    # fastembed's Qdrant/bm25 emits term frequencies only; the collection must add the IDF.
+    assert info.config.params.sparse_vectors["sparse_bm25"].modifier == models.Modifier.IDF
     hit = client.query_points(result.collection, query=[1.0] + [0.0] * 7, using="dense", limit=1).points[0]
     assert hit.payload["chunk_id"].startswith("d:05:") and hit.payload["chapter_no"] == 5
     manifest = json.loads(result.manifest_path.read_text())
@@ -422,8 +424,8 @@ def test_index_the_real_book_into_the_live_qdrant(tmp_path: Path) -> None:
                       parents_dir=PARENTS.parent, index_dir=tmp_path / "index", client=client)
     try:
         assert result.collection == f"flp_chunks_{test_version}" != f"flp_chunks_{real_version}"
-        assert result.points_upserted == 279 == client.count(result.collection, exact=True).count
-        assert result.parents_stored == 180 and result.chunks_stored == 279
+        assert result.points_upserted == 202 == client.count(result.collection, exact=True).count
+        assert result.parents_stored == 130 and result.chunks_stored == 202
         assert s6.alias_target(client, settings.index.alias) != result.collection
         manifest = json.loads(result.manifest_path.read_text())
         assert manifest["models"] == {"embed_model": "BAAI/bge-m3", "embed_dim": 1024,

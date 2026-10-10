@@ -12,10 +12,11 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from qdrant_client import QdrantClient, models
 
 from flp_rag import tracing
-from flp_rag.contracts import Chapter, Chunk, Parent, read_jsonl, write_jsonl
+from flp_rag.contracts import Block, Chapter, Chunk, Parent, read_jsonl, write_jsonl
 from flp_rag.ingest import s01_parse as s1
 from flp_rag.ingest import s06_s07_index as s7
 from flp_rag.ingest import s08_verify as s8
+from flp_rag.ingest.s04_chunk import tokenizer
 from flp_rag.settings import load_settings
 from flp_rag.stores.parent_store import ParentStore
 from tests.test_s06_s07_index import (
@@ -43,7 +44,8 @@ def _chunk(i: int, text: str, chapter: Chapter, parent: str = "d:05:s000") -> Ch
     payload = {
         "doc_id": "d", "chunk_id": f"d:{chapter.chapter_no:02d}:{i:04d}", "parent_id": parent,
         "part": chapter.part, "chapter_no": chapter.chapter_no, "chapter_title": chapter.title,
-        "section_title": "", "page_pdf_start": chapter.page_pdf_start, "page_pdf_end": chapter.page_pdf_start,
+        "section_title": chapter.title, "section_titles": [chapter.title],
+        "page_pdf_start": chapter.page_pdf_start, "page_pdf_end": chapter.page_pdf_start,
         "page_printed_start": chapter.page_pdf_start - 2, "page_printed_end": chapter.page_pdf_start - 2,
         "has_code": False, "code_lang": "", "code_group_id": None, "part_index": None,
         "php_symbols": [], "token_count": len(text.split()), "chunk_config_hash": "abcdef0123456789",
@@ -51,6 +53,15 @@ def _chunk(i: int, text: str, chapter: Chapter, parent: str = "d:05:s000") -> Ch
         "created_at": "2026-09-22T10:00:00Z", "chunk_kind": "prose_only",
     }
     return Chunk(payload["chunk_id"], parent, text, f"hdr {i}\n{text}", len(text.split()), payload)
+
+
+def _block(chunk: Chunk, i: int, text: str | None = None) -> Block:
+    """One clean paragraph block per chunk, so the synthetic chapters are fully covered."""
+    p = chunk.payload
+    return Block(block_id=f"d:{p['page_pdf_start']:03d}:{i:03d}", type="paragraph", text=text or chunk.display_text,
+                 part=p["part"], chapter_no=p["chapter_no"], chapter_title=p["chapter_title"],
+                 section_title="", page_pdf=p["page_pdf_start"], page_printed=p["page_printed_start"],
+                 block_index=i, in_rect=False)
 
 
 def _parent(pid: str, chapter: Chapter) -> Parent:
@@ -66,6 +77,7 @@ def _setup(tmp_path: Path, chunks: list[Chunk], parents: list[Parent], version: 
     chunks = [Chunk(c.chunk_id, c.parent_id, c.display_text, c.embedding_text, c.token_count,
                     {**c.payload, "index_version": version}) for c in chunks]
     write_jsonl(tmp_path / "enriched" / "d.jsonl", chunks)
+    write_jsonl(tmp_path / "clean" / "d.jsonl", [_block(c, i) for i, c in enumerate(chunks)])
     write_jsonl(tmp_path / "parents" / "d.jsonl", parents)
     write_jsonl(tmp_path / "parsed" / "d.chapters.jsonl", CHAPTERS)
     smoke_rows = smoke if smoke is not None else [
@@ -82,7 +94,8 @@ def _setup(tmp_path: Path, chunks: list[Chunk], parents: list[Parent], version: 
 def _index_and_verify(tmp_path: Path, settings, embedder, client: QdrantClient):
     s7.index("d", settings, in_dir=tmp_path / "enriched", vectors_dir=tmp_path / "vectors",
              parents_dir=tmp_path / "parents", index_dir=tmp_path / "index", client=client)
-    return s8.verify("d", settings, in_dir=tmp_path / "enriched", parsed_dir=tmp_path / "parsed",
+    return s8.verify("d", settings, in_dir=tmp_path / "enriched", clean_dir=tmp_path / "clean",
+                     parsed_dir=tmp_path / "parsed",
                      index_dir=tmp_path / "index", smoke_path=tmp_path / "smoke.jsonl",
                      cache_path=tmp_path / "cache.sqlite", client=client, embedder=embedder)
 
@@ -98,11 +111,20 @@ GOOD_PARENTS = [_parent("d:05:s000", CHAPTERS[0]), _parent("d:06:s001", CHAPTERS
 # --------------------------------------------------------------------------- checks
 
 
-def test_coverage_fails_on_an_empty_chapter_and_flags_thin_ones() -> None:
-    ok = s8.check_coverage(GOOD_CHUNKS, CHAPTERS, min_per_page=0.5)
-    assert ok.passed and ok.details["empty"] == []
-    assert [t["chapter"] for t in ok.details["under_min_per_page"]] == ["Property Promotion", "Readonly Properties"]
-    missing = s8.check_coverage(GOOD_CHUNKS[:2], CHAPTERS, min_per_page=0.0)
+def test_coverage_fails_on_an_empty_chapter_and_flags_uncovered_text() -> None:
+    enc = tokenizer(load_settings().chunk)
+    blocks = [_block(c, i) for i, c in enumerate(GOOD_CHUNKS)]
+    ok = s8.check_coverage(GOOD_CHUNKS, blocks, CHAPTERS, 0.99, enc)
+    assert ok.passed and ok.details["empty"] == [] and ok.details["under_min_coverage"] == []
+    # Case and whitespace do not matter; a block whose text is in no chunk of its chapter does.
+    stray = _block(GOOD_CHUNKS[0], 9, "A sentence that no chunk holds, twelve tokens or so of it.")
+    shouted = _block(GOOD_CHUNKS[1], 8, GOOD_CHUNKS[1].display_text.upper() + "  ")
+    flagged = s8.check_coverage(GOOD_CHUNKS, [*blocks, stray, shouted], CHAPTERS, 0.99, enc)
+    assert flagged.passed
+    assert [(t["chapter"], t["uncovered_blocks"]) for t in flagged.details["under_min_coverage"]] == [
+        ("Property Promotion", [stray.block_id]),
+    ]
+    missing = s8.check_coverage(GOOD_CHUNKS[:2], blocks, CHAPTERS, 0.0, enc)
     assert not missing.passed and missing.details["empty"] == ["Readonly Properties"]
 
 
@@ -142,7 +164,7 @@ def test_verify_passes_switches_alias_and_writes_the_report(tmp_path: Path) -> N
     assert (result.smoke_hits, result.smoke_total) == (2, 2)
     assert result.alias_switched and result.previous_collection is None and result.pruned == []
     assert s7.alias_target(client, settings.index.alias) == "flp_chunks_v1-fake-abcdef01"
-    assert result.flags == ["Property Promotion: 2 chunks over 12 pages", "Readonly Properties: 1 chunks over 10 pages"]
+    assert result.flags == []  # every synthetic block sits inside a chunk of its chapter
     manifest = json.loads(result.manifest_path.read_text())
     v = manifest["verify"]
     assert v["passed"] is True and v["alias_switched"] is True and v["smoke_hits"] == 2
@@ -226,7 +248,7 @@ def test_crash_between_switch_and_report_is_resumable(tmp_path: Path) -> None:
     again = s7.index("d", settings, in_dir=tmp_path / "enriched", vectors_dir=tmp_path / "vectors",
                      parents_dir=tmp_path / "parents", index_dir=tmp_path / "index", client=client)
     assert again.alias_switched is True and again.points_upserted == 3  # skipped, not rebuilt
-    verified = s8.verify("d", settings, in_dir=tmp_path / "enriched", parsed_dir=tmp_path / "parsed",
+    verified = s8.verify("d", settings, in_dir=tmp_path / "enriched", clean_dir=tmp_path / "clean", parsed_dir=tmp_path / "parsed",
                          index_dir=tmp_path / "index", smoke_path=tmp_path / "smoke.jsonl",
                          cache_path=tmp_path / "cache.sqlite", client=client, embedder=embedder)
     assert verified.passed and verified.alias_switched and verified.previous_collection == result.collection
@@ -236,7 +258,7 @@ def test_crash_between_switch_and_report_is_resumable(tmp_path: Path) -> None:
 def test_verify_without_a_manifest_names_stage_7(tmp_path: Path) -> None:
     settings, embedder = _setup(tmp_path, GOOD_CHUNKS, GOOD_PARENTS)
     with pytest.raises(FileNotFoundError, match="Stage 7"):
-        s8.verify("d", settings, in_dir=tmp_path / "enriched", parsed_dir=tmp_path / "parsed",
+        s8.verify("d", settings, in_dir=tmp_path / "enriched", clean_dir=tmp_path / "clean", parsed_dir=tmp_path / "parsed",
                   index_dir=tmp_path / "index", smoke_path=tmp_path / "smoke.jsonl",
                   cache_path=tmp_path / "cache.sqlite", client=QdrantClient(":memory:"), embedder=embedder)
 
@@ -271,13 +293,17 @@ def test_verify_the_real_book_under_a_throwaway_alias(tmp_path: Path) -> None:
     try:
         # Run the checks directly instead of verify(): verify() prunes every flp_chunks_*
         # collection that is not the new or previous one, which would remove the production one.
-        cov = s8.check_coverage(rewritten, list(read_jsonl(ROOT / "data" / "parsed" / "bca146b9df2d0a2b.chapters.jsonl", Chapter)), settings.verify.min_chunks_per_page)
+        cov = s8.check_coverage(
+            rewritten, list(read_jsonl(ROOT / "data" / "clean" / "bca146b9df2d0a2b.jsonl", Block)),
+            list(read_jsonl(ROOT / "data" / "parsed" / "bca146b9df2d0a2b.chapters.jsonl", Chapter)),
+            settings.verify.min_chapter_coverage, tokenizer(settings.chunk),
+        )
         dup = s8.check_duplicates(rewritten)
         par = s8.check_parents(indexed.store_path)
         from flp_rag.models import get_embeddings
         smoke = s8.check_smoke(client, indexed.collection, s8.load_smoke_queries(ROOT / "eval" / "smoke_queries.jsonl"), get_embeddings(settings))
         assert cov.passed and dup.passed and par.passed, (cov.details["empty"], dup.details, par.details["orphans"])
-        assert [t["chapter"] for t in cov.details["under_min_per_page"]] == ["First-class callables"]
+        assert cov.details["under_min_coverage"] == []
         assert smoke.passed, [q for q in smoke.details["queries"] if not q["hit"]]
         assert smoke.details["hits"] == 10
         previous = s8.switch_alias(client, test_alias, indexed.collection)

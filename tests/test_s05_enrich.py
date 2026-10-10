@@ -114,7 +114,8 @@ def test_next_index_version_counts_existing_runs(tmp_path: Path) -> None:
 def _chunk(payload_extra: dict | None = None, text: str = CUSTOMER_DTO) -> Chunk:
     payload = {
         "doc_id": "d", "chunk_id": "d:05:0046", "parent_id": "d:05:s006", "part": "Part 1",
-        "chapter_no": 5, "chapter_title": "Property Promotion", "section_title": "",
+        "chapter_no": 5, "chapter_title": "Property Promotion", "section_title": "Property Promotion",
+        "section_titles": ["Property Promotion"],
         "page_pdf_start": 66, "page_pdf_end": 66, "page_printed_start": 64, "page_printed_end": 64,
         "has_code": True, "code_lang": "php", "code_group_id": None, "part_index": None,
         "token_count": 83, "chunk_kind": "prose_with_code", "section_complete": False,
@@ -180,11 +181,11 @@ def enriched(tmp_path_factory: pytest.TempPathFactory):
 @needs_pdf
 def test_schema_passes_for_every_chunk(enriched) -> None:
     result, span, chunks = enriched
-    assert result.chunks_enriched == len(chunks) == 279
+    assert result.chunks_enriched == len(chunks) == 202
     for c in chunks:
         s5.validate_payload(c.payload)
         assert len(c.payload["php_symbols"]) <= load_settings().enrich.symbols_max
-    assert span.attributes["rag.chunks_enriched"] == 279
+    assert span.attributes["rag.chunks_enriched"] == 202
     assert span.attributes["rag.llm_calls"] == 0 and span.attributes["rag.cost_usd"] == 0.0
     assert result.index_version.startswith("v1-bgem3-")
     assert len({c.payload["created_at"] for c in chunks}) == 1

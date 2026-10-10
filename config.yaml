@@ -26,6 +26,11 @@ structure:
   label_pattern: '^CHAPTER \d+$'
   mono_char_width_ratio: 0.6        # fallback char width = ratio * font size when unmeasurable
   code_min_gap_chars: 0.5           # words closer than this many chars touch: no space between
+  word_join_max_gap_pt: 1.0         # prose words closer than this join with no space (gap histogram:
+                                    # touching words at 0-0.5 pt, spaced words at 2.5 pt, nothing between)
+  sentence_end_chars: ['.', '!', '?', ':', ';', '"', '”', ')', '…', "'", '’']  # a paragraph that ends a
+                                    # page without one of these continues on the next page: merge
+  bullet_chars: ['•']               # a bullet list is complete without a final period
   default_mono_size_pt: 9
 
 clean:
@@ -39,6 +44,7 @@ chunk:
   code_max_tokens: 900
   overlap_paragraph_max_tokens: 80
   parent_max_tokens: 2500
+  small_merge_max_tokens: 900       # a chunk under min_tokens may grow its neighbor up to this
 
 enrich:
   symbols_max: 40
@@ -60,7 +66,7 @@ index:
   keep_previous: 1
 
 verify:
-  min_chunks_per_page: 0.5
+  min_chapter_coverage: 0.99       # covered tokens / clean tokens per chapter; under it: flagged
   smoke_queries: eval/smoke_queries.jsonl
 
 api:

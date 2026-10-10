@@ -80,8 +80,8 @@ def run(
             parents_dir=data_dir / "parents", index_dir=data_dir / "index",
         ),
         "verify": lambda: s08_verify.verify(
-            doc_id, settings, in_dir=data_dir / "enriched", parsed_dir=data_dir / "parsed",
-            index_dir=data_dir / "index",
+            doc_id, settings, in_dir=data_dir / "enriched", clean_dir=data_dir / "clean",
+            parsed_dir=data_dir / "parsed", index_dir=data_dir / "index",
         ),
     }
     for name in STAGES:
