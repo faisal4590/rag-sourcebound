@@ -126,6 +126,19 @@ class ApiConfig(_Section):
 class GuardConfig(_Section):
     max_chars: int = Field(gt=0)
     rate_limit_per_min: int = Field(gt=0)
+    injection_patterns: tuple[str, ...] = Field(min_length=1)
+    base64_min_run: int = Field(gt=0)
+    language_min_chars: int = Field(ge=0)
+    language_min_confidence: float = Field(ge=0, le=1)
+
+    @model_validator(mode="after")
+    def _patterns_compile(self) -> "GuardConfig":
+        for i, pattern in enumerate(self.injection_patterns):
+            try:
+                re.compile(pattern, re.IGNORECASE)
+            except re.error as exc:
+                raise ValueError(f"guard.injection_patterns[{i}] is not a regex: {exc}") from exc
+        return self
 
 
 class QueryConfig(_Section):

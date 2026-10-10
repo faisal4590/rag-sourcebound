@@ -24,6 +24,7 @@ from langgraph.graph.state import CompiledStateGraph
 from qdrant_client import QdrantClient
 
 from flp_rag.contracts import Candidate, Response
+from flp_rag.graph.nodes import guard_input as guard_mod
 from flp_rag.graph.nodes import retrieve as retrieve_mod
 from flp_rag.graph.state import RagState
 from flp_rag.models import Embedder
@@ -109,10 +110,14 @@ def build_graph(nodes: GraphNodes) -> CompiledStateGraph:
         graph.add_node(name, _traced(name, fn))
     graph.add_edge(START, "guard_input")
     graph.add_edge("guard_input", "understand")
-    graph.add_conditional_edges("understand", route_after_understand, {"retrieve": "retrieve", "respond": "respond"})
+    graph.add_conditional_edges(
+        "understand", route_after_understand, {"retrieve": "retrieve", "respond": "respond"}
+    )
     graph.add_edge("retrieve", "rerank")
     graph.add_edge("rerank", "gate")
-    graph.add_conditional_edges("gate", route_after_gate, {"assemble": "assemble", "respond": "respond"})
+    graph.add_conditional_edges(
+        "gate", route_after_gate, {"assemble": "assemble", "respond": "respond"}
+    )
     graph.add_edge("assemble", "generate")
     graph.add_edge("generate", "check_output")
     graph.add_edge("check_output", "respond")
@@ -136,40 +141,48 @@ class Deps:
 
 
 def default_nodes(deps: Deps) -> GraphNodes:
-    """Milestone 3 skeleton. Real: retrieve (dense, #15). Stubs that later issues replace:
-    guard_input (#18), understand passthrough (#27), rerank_score = fused_score (#26), a gate on
+    """Milestone 3 skeleton. Real: guard_input (#18), retrieve (dense, #15). Stubs that later
+    issues replace: understand passthrough (#27), rerank_score = fused_score (#26), a gate on
     the stub score with the configured thresholds (#19), assemble (#20), generate (#21),
     check_output (#22), respond minimal (#23)."""
     s = deps.settings
 
-    def guard_input(state: RagState) -> dict[str, Any]:
-        # Placeholder for #18. Spec 7.4 attributes are set by hand: the decorator reads
-        # to_attrs() from records, and nodes return plain dicts.
-        span = current_span()
-        span.set_attribute("guard.chars", len(state["question"]))
-        span.set_attribute("guard.injection_suspected", False)
-        span.set_attribute("guard.language", "en")
-        return {"injection_suspected": False, "language": "en"}
+    guard_input = guard_mod.make_guard_input(s)
 
     def understand(state: RagState) -> dict[str, Any]:
         from flp_rag.contracts import StandaloneQuery
 
         q = state["question"]
-        return {"standalone": StandaloneQuery(raw=q, standalone=q, intent="book_question", wants_code=False,
-                                              chapter_hint=None, variants=[q])}
+        return {
+            "standalone": StandaloneQuery(
+                raw=q,
+                standalone=q,
+                intent="book_question",
+                wants_code=False,
+                chapter_hint=None,
+                variants=[q],
+            )
+        }
 
     def retrieve(state: RagState) -> dict[str, Any]:
         standalone = state.get("standalone")
         question = standalone.standalone if standalone else state["question"]
         candidates = retrieve_mod.retrieve_dense(
-            question, s, filters=state.get("filters"), client=deps.client, embedder=deps.embedder,
-            cache=deps.cache, collection=deps.collection,
+            question,
+            s,
+            filters=state.get("filters"),
+            client=deps.client,
+            embedder=deps.embedder,
+            cache=deps.cache,
+            collection=deps.collection,
         )
         return {"candidates": candidates}
 
     def rerank(state: RagState) -> dict[str, Any]:
-        stubbed = [Candidate(c.chunk_id, c.fused_score, c.fused_score, c.provenance, c.payload)
-                   for c in state.get("candidates", [])]
+        stubbed = [
+            Candidate(c.chunk_id, c.fused_score, c.fused_score, c.provenance, c.payload)
+            for c in state.get("candidates", [])
+        ]
         return {"candidates": stubbed[: s.rerank.top_n]}
 
     def gate(state: RagState) -> dict[str, Any]:
@@ -187,14 +200,26 @@ def default_nodes(deps: Deps) -> GraphNodes:
         else:
             decision, reason = "pass", None
         span = current_span()
-        for key, value in (("rag.gate_decision", decision), ("rag.score_top1", top), ("rag.n_pass", n_pass),
-                           ("rag.tau_low", g.tau_low), ("rag.tau_pass", g.tau_pass), ("rag.tau_high", g.tau_high),
-                           ("rag.borderline", decision == "borderline")):
+        for key, value in (
+            ("rag.gate_decision", decision),
+            ("rag.score_top1", top),
+            ("rag.n_pass", n_pass),
+            ("rag.tau_low", g.tau_low),
+            ("rag.tau_pass", g.tau_pass),
+            ("rag.tau_high", g.tau_high),
+            ("rag.borderline", decision == "borderline"),
+        ):
             span.set_attribute(key, value)
         if reason:
             span.set_attribute("rag.abstain_reason", reason)
-            return {"gate_decision": "abstain", "borderline": False, "top_score": top,
-                    "status": "no_information", "answer": ABSTAIN_TEXT, "abstain_reason": reason}
+            return {
+                "gate_decision": "abstain",
+                "borderline": False,
+                "top_score": top,
+                "status": "no_information",
+                "answer": ABSTAIN_TEXT,
+                "abstain_reason": reason,
+            }
         return {"gate_decision": decision, "borderline": decision == "borderline", "top_score": top}
 
     def assemble(state: RagState) -> dict[str, Any]:
@@ -210,11 +235,20 @@ def default_nodes(deps: Deps) -> GraphNodes:
         status = state.get("status") or ("answered" if state.get("answer") else "error")
         answer = state.get("answer") or ABSTAIN_TEXT
         response = Response(
-            answer=answer, status=status, sources=list(state.get("sources", [])),  # type: ignore[arg-type]
-            trace_id=state.get("trace_id", ""), timings_ms=dict(state.get("timings_ms", {})),
-            model={"embed": s.embed.model}, index_version="", prompt_version="",
-            debug={"visited": [*state.get("visited", []), "respond"],
-                   "abstain_reason": state.get("abstain_reason")} if state.get("debug") else None,
+            answer=answer,
+            status=status,
+            sources=list(state.get("sources", [])),  # type: ignore[arg-type]
+            trace_id=state.get("trace_id", ""),
+            timings_ms=dict(state.get("timings_ms", {})),
+            model={"embed": s.embed.model},
+            index_version="",
+            prompt_version="",
+            debug={
+                "visited": [*state.get("visited", []), "respond"],
+                "abstain_reason": state.get("abstain_reason"),
+            }
+            if state.get("debug")
+            else None,
         )
         span = current_span()
         span.set_attribute("rag.status", status)
@@ -222,7 +256,9 @@ def default_nodes(deps: Deps) -> GraphNodes:
         span.set_attribute("rag.answer_chars", len(answer))
         return {"status": status, "answer": answer, "response": response}
 
-    return GraphNodes(guard_input, understand, retrieve, rerank, gate, assemble, generate, check_output, respond)
+    return GraphNodes(
+        guard_input, understand, retrieve, rerank, gate, assemble, generate, check_output, respond
+    )
 
 
 def compile_default(deps: Deps) -> CompiledStateGraph:

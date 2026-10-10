@@ -70,7 +70,16 @@ api:
 
 guard:
   max_chars: 2000
-  rate_limit_per_min: 30
+  rate_limit_per_min: 30       # Milestone 5, per session_id or IP
+  injection_patterns:          # case-insensitive regexes; a match marks, never blocks
+    - '\b(ignore|disregard|forget)\s+(\S+\s+){0,3}?(previous|prior|above|earlier|preceding)\s+(instructions?|prompts?|rules|directions)'
+    - '\b(ignore|disregard|forget)\s+(everything|all|anything)\s+(above|before|you were told)'
+    - '\byou are now\b'
+    - '(^|\n)\s*(system|assistant|user)\s*:'
+    - '<\|im_start\|>|<\|im_end\|>|\[INST\]|<<SYS>>'
+  base64_min_run: 200          # a run of base64 characters this long is suspicious
+  language_min_chars: 20       # shorter questions are too short to detect; assumed English
+  language_min_confidence: 0.3 # below this the text is mostly code; assumed English
 
 query:
   history_turns: 3

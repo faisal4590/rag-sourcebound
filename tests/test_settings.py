@@ -48,7 +48,7 @@ def test_config_hash_tracks_file_bytes(tmp_path: Path) -> None:
 
 
 def test_missing_required_section_raises(tmp_path: Path) -> None:
-    without_trace = SHIPPED[: SHIPPED.index("trace:")] + SHIPPED[SHIPPED.index("prices_usd"):]
+    without_trace = SHIPPED[: SHIPPED.index("trace:")] + SHIPPED[SHIPPED.index("prices_usd") :]
     with pytest.raises(ValueError, match="trace"):
         _load(tmp_path, without_trace)
 
@@ -60,8 +60,13 @@ def test_missing_chunk_section_raises(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     "line",
-    ["openai_api_key: sk-abc", "anthropic_key: sk-ant", "gen:\n  token: x", "db_password: pw",
-     "cohere_credentials: c"],
+    [
+        "openai_api_key: sk-abc",
+        "anthropic_key: sk-ant",
+        "gen:\n  token: x",
+        "db_password: pw",
+        "cohere_credentials: c",
+    ],
 )
 def test_secret_looking_keys_are_rejected(tmp_path: Path, line: str) -> None:
     with pytest.raises(ValueError, match="secret-looking"):
@@ -106,6 +111,9 @@ def test_every_spec_section_is_typed() -> None:
     assert s.api.health_timeout_s == 2
     assert s.guard.max_chars == 2000
     assert s.guard.rate_limit_per_min == 30
+    assert len(s.guard.injection_patterns) >= 3
+    assert s.guard.base64_min_run == 200 and s.guard.language_min_chars == 20
+    assert s.guard.language_min_confidence == 0.3
     assert s.query.history_turns == 3
     assert s.query.expansions == 3
     assert s.query.smalltalk_policy == "abstain"
