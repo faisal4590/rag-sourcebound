@@ -123,6 +123,18 @@ def test_short_last_paragraph_repeats_as_overlap(cfg, enc) -> None:
     assert p_next in chunks[1].display_text
 
 
+def test_no_overlap_when_the_previous_chunk_ends_with_code(cfg, enc) -> None:
+    # The last paragraph of a chunk that ends in code is the lead-in to that code. Repeating it
+    # without the code would leave a dangling "here's what it looks like:".
+    lead = "Here is what it looks like:"
+    blocks = [B("paragraph", words(340)), B("paragraph", lead), B("code", "class A {}"),
+              B("paragraph", words(300, seed="beta"))]
+    chunks, _, _ = run(blocks, cfg, enc)
+    assert len(chunks) == 2 and chunks[0].display_text.endswith("class A {}")
+    assert not chunks[1].display_text.startswith(lead)
+    assert chunks[1].display_text.startswith(words(300, seed="beta")[:40])
+
+
 def test_long_last_paragraph_gives_no_overlap(cfg, enc) -> None:
     blocks = [B("paragraph", words(200)), B("paragraph", words(200, seed="beta")),
               B("paragraph", words(200, seed="gamma"))]
@@ -189,10 +201,10 @@ def test_consecutive_code_blocks_share_a_chunk_when_they_fit(cfg, enc) -> None:
 
 def test_callout_is_its_own_chunk_and_takes_following_code(cfg, enc) -> None:
     blocks = [
-        B("paragraph", words(40)),
-        B("callout", "PHP Compiler\nEven though PHP is interpreted, it has a compiler."),
+        B("paragraph", words(130)),
+        B("callout", "PHP Compiler\n" + words(cfg.min_tokens, seed="gamma")),
         B("code", "php -l file.php"),
-        B("paragraph", words(40, seed="beta")),
+        B("paragraph", words(130, seed="beta")),
     ]
     chunks, _, _ = run(blocks, cfg, enc)
     assert len(chunks) == 3
@@ -201,11 +213,89 @@ def test_callout_is_its_own_chunk_and_takes_following_code(cfg, enc) -> None:
     assert "PHP Compiler" not in chunks[0].display_text and "PHP Compiler" not in chunks[2].display_text
 
 
+def test_small_callout_merges_into_the_prose_chunk_before_it(cfg, enc) -> None:
+    blocks = [
+        B("paragraph", words(130)),
+        B("callout", "Sandi's talk: https://www.youtube.com/watch?v=OMPfEXIlTVE"),
+        B("paragraph", words(130, seed="beta")),
+    ]
+    chunks, _, stats = run(blocks, cfg, enc)
+    assert len(chunks) == 2 and stats.chunks_under_min == 0
+    assert chunks[0].display_text.endswith("Sandi's talk: https://www.youtube.com/watch?v=OMPfEXIlTVE")
+    assert chunks[0].payload["chunk_kind"] == "prose_only"
+    assert chunks[0].payload["block_ids"] == [blocks[0].block_id, blocks[1].block_id]
+
+
+def test_small_chunk_may_grow_the_host_past_max_tokens_up_to_the_small_merge_limit(cfg, enc) -> None:
+    big = words(cfg.max_tokens - 20)
+    blocks = [B("paragraph", big), B("callout", "In action\n" + words(40, seed="beta"))]
+    chunks, _, stats = run(blocks, cfg, enc)
+    assert len(chunks) == 1 and stats.chunks_under_min == 0
+    assert cfg.max_tokens < chunks[0].token_count <= cfg.small_merge_max_tokens
+    # Past the small-merge limit the small chunk stays alone.
+    huge = words(cfg.small_merge_max_tokens - 20)
+    chunks, _, stats = run([B("paragraph", huge), B("callout", "In action\n" + words(40, seed="beta"))], cfg, enc)
+    assert len(chunks) == 2 and stats.chunks_under_min == 1
+
+
+def test_small_callout_merges_forward_when_nothing_comes_before_it(cfg, enc) -> None:
+    blocks = [B("callout", "…"), B("paragraph", words(130))]
+    chunks, _, stats = run(blocks, cfg, enc)
+    assert len(chunks) == 1 and stats.chunks_under_min == 0
+    assert chunks[0].display_text.startswith("…\n\n")
+
+
+# --------------------------------------------------------------------------- small sections
+
+
+def test_small_section_merges_into_the_previous_section_of_its_chapter(cfg, enc) -> None:
+    blocks = [
+        B("heading", "Unset is not allowed"), B("paragraph", words(200)),
+        B("heading", "Reflection", section="Reflection"),
+        B("paragraph", words(20, seed="beta"), section="Reflection"),
+    ]
+    chunks, parents, stats = run(blocks, cfg, enc)
+    assert stats.chunks_under_min == 0 and len(parents) == 1
+    assert {c.payload["section_title"] for c in chunks} == {"Unset is not allowed"}
+    assert "\n\nReflection\n\n" in chunks[-1].display_text
+    assert chunks[-1].payload["section_titles"] == ["Unset is not allowed", "Reflection"]
+    assert "Reflection" in parents[0].text and parents[0].section_title == "Unset is not allowed"
+
+
+def test_small_chapter_intro_merges_into_the_first_section(cfg, enc) -> None:
+    blocks = [
+        B("chapter_title", "Property Promotion", section=""),
+        B("paragraph", words(20), section=""),
+        B("heading", "Constructor promotion"), B("paragraph", words(200, seed="beta")),
+    ]
+    chunks, parents, stats = run(blocks, cfg, enc)
+    assert stats.chunks_under_min == 0 and len(parents) == 1
+    assert {c.payload["section_title"] for c in chunks} == {"Constructor promotion"}
+    assert chunks[0].display_text.startswith(words(20) + "\n\nConstructor promotion\n\n")
+    assert chunks[0].payload["section_titles"] == ["Constructor promotion"]
+
+
+def test_small_section_never_merges_across_chapters(cfg, enc) -> None:
+    blocks = [
+        B("heading", "Constructor promotion"), B("paragraph", words(200)),
+        B("chapter_title", "Readonly Properties", chapter=CH6, section="", page=77),
+        B("paragraph", words(20, seed="beta"), chapter=CH6, section="", page=77),
+    ]
+    chunks, parents, stats = run(blocks, cfg, enc)
+    assert stats.chunks_under_min == 1 and len(parents) == 2
+    assert chunks[-1].payload["chapter_no"] == 6 and chunks[-1].payload["section_complete"]
+    assert chunks[-1].token_count < cfg.min_tokens
+    # A chapter intro carries the chapter title as its section title, like the chunk header.
+    assert chunks[-1].payload["section_title"] == "Readonly Properties"
+    assert chunks[-1].payload["section_titles"] == ["Readonly Properties"]
+    assert parents[-1].section_title == "Readonly Properties"
+
+
 # --------------------------------------------------------------------------- parents, ids, header
 
 
 def test_one_parent_per_section_and_windows_for_huge_sections(cfg, enc) -> None:
-    small = [B("heading", "A"), B("paragraph", words(50))]
+    small = [B("heading", "A"), B("paragraph", words(130))]
     huge = [B("heading", "B", section="B")] + [B("paragraph", words(190, seed=s), section="B")
                                                 for s in ["alpha", "beta", "gamma", "delta", "omega",
                                                           "sigma", "theta", "kappa"] * 2]

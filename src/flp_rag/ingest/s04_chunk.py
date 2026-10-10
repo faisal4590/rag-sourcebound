@@ -7,15 +7,19 @@ Output: `data/chunks/{doc_id}.jsonl` (`Chunk`) and `data/parents/{doc_id}.jsonl`
 Rules (spec Section 5, Stage 4, plus the decisions in CONTEXT.md):
 1. A chunk never crosses a heading and never splits a code block.
 2. Paragraphs pack toward `target_tokens`, never past `max_tokens`. A section smaller than
-   `min_tokens` is one chunk. A trailing remainder under `min_tokens` merges into the chunk
+   `min_tokens` joins the previous section of its chapter, else the next one; alone in its
+   chapter it is one chunk. A trailing remainder under `min_tokens` merges into the chunk
    before it when the result fits.
-3. When a chunk closes, its last paragraph repeats at the start of the next chunk of the same
-   section if it has at most `overlap_paragraph_max_tokens`.
+3. When a chunk closes with a paragraph, that paragraph repeats at the start of the next chunk
+   of the same section if it has at most `overlap_paragraph_max_tokens`. A chunk that closes
+   with code gives no overlap.
 4. A code block attaches to the chunk that ends directly before it when the total stays within
    `code_max_tokens`. Otherwise the code becomes its own chunk with the last paragraph before it
    as lead-in. Code over `code_max_tokens` splits at blank lines, then at line ends, into pieces
    that share a `code_group_id`.
-5. A callout is its own chunk. Code directly after it attaches to it.
+5. A callout is its own chunk. Code directly after it attaches to it. A callout under
+   `min_tokens` joins the chunk before it, else the one after, like any small chunk. Such a merge
+   may grow the host up to `small_merge_max_tokens`.
 6. One parent per section. A section over `parent_max_tokens` gets one parent per chunk: the
    window of the chunk and its two neighbors.
 7. `embedding_text = chunk_header + "\\n" + display_text`. `chunk_id = doc:chapter:seq` with one
@@ -73,6 +77,41 @@ def group_sections(blocks: Sequence[Block]) -> list[Section]:
     return sections
 
 
+def _same_chapter(a: Section, b: Section) -> bool:
+    return (a.chapter_no, a.chapter_title) == (b.chapter_no, b.chapter_title)
+
+
+def _joined(host: Section, extra: Section, *, before: bool) -> Section:
+    blocks = [*extra.blocks, *host.blocks] if before else [*host.blocks, *extra.blocks]
+    return Section(host.chapter_no, host.chapter_title, host.section_title, blocks)
+
+
+def merge_small_sections(
+    sections: Sequence[Section], cfg: ChunkConfig, enc: tiktoken.Encoding
+) -> list[Section]:
+    """A section under `min_tokens` joins the previous section of its chapter and takes its
+    title. At a chapter start it waits for the next section instead. Alone in its chapter, it
+    stays as it is. Sections never merge across a chapter boundary."""
+    out: list[Section] = []
+    held: Section | None = None  # a small section at a chapter start, waiting for the next one
+    for section in sections:
+        if held is not None:
+            if _same_chapter(held, section):
+                section = _joined(section, held, before=True)
+            else:
+                out.append(held)
+            held = None
+        if len(enc.encode(section.token_text)) >= cfg.min_tokens:
+            out.append(section)
+        elif out and _same_chapter(out[-1], section):
+            out[-1] = _joined(out[-1], section, before=False)
+        else:
+            held = section
+    if held is not None:
+        out.append(held)
+    return out
+
+
 # --------------------------------------------------------------------------- drafts
 
 
@@ -107,7 +146,7 @@ class _Draft:
 
     @property
     def has_prose(self) -> bool:
-        return any(p.kind in ("heading", "paragraph") for p in self.pieces)
+        return any(p.kind in ("heading", "paragraph", "callout") for p in self.pieces)
 
     @property
     def kind(self) -> str:
@@ -132,6 +171,15 @@ class _Draft:
 
     def block_ids(self) -> list[str]:
         return [p.block.block_id for p in self.pieces]
+
+    def section_titles(self, host_title: str) -> list[str]:
+        """The section the chunk belongs to, then every heading inside it (merged small
+        sections keep their heading in the text). Deduplicated, in order."""
+        titles = [host_title]
+        for p in self.pieces:
+            if p.kind == "heading" and p.text not in titles:
+                titles.append(p.text)
+        return titles
 
     def pages(self) -> tuple[int, int]:
         pages = [p.block.page_pdf for p in self.pieces]
@@ -204,7 +252,12 @@ class _Packer:
         self.acc = None
 
     def overlap_from_previous(self) -> _Piece | None:
+        """The last paragraph of the previous chunk, when that chunk ends with it. A chunk that
+        ends in code keeps its lead-in paragraph to itself: repeated without the code it would
+        read as a dangling "here's what it looks like:"."""
         if not self.drafts or self.drafts[-1].kind not in PROSE_KINDS:
+            return None
+        if self.drafts[-1].pieces[-1].kind != "paragraph":
             return None
         last = self.drafts[-1].last_paragraph()
         if last is not None and last.tokens <= self.cfg.overlap_paragraph_max_tokens:
@@ -259,19 +312,20 @@ class _Packer:
         return self.drafts
 
     def _mergeable(self, d: _Draft) -> bool:
-        return d.kind in PROSE_KINDS and d.code_group_id is None
+        return d.code_group_id is None
 
     def _fits(self, target: _Draft, pieces: list[_Piece], *, after: bool) -> bool:
         merged = _Draft(
             pieces=[*target.pieces, *pieces] if after else [*pieces, *target.pieces],
             overlap=target.overlap, lead_in=target.lead_in,
         )
-        return merged.tokens(self.enc) <= self.cfg.max_tokens
+        return merged.tokens(self.enc) <= self.cfg.small_merge_max_tokens
 
     def _merge_small_drafts(self) -> None:
-        """A prose chunk under min_tokens joins a prose neighbor of the same section when the
-        result stays within max_tokens: the previous chunk first, else the next. Callouts and
-        code groups never take part, so a small chunk beside a callout stays small."""
+        """A chunk under min_tokens joins a neighbor of the same section when the result stays
+        within small_merge_max_tokens (above max_tokens on purpose: a card too small to match is
+        worse than one a little too long): the previous chunk first, else the next. Code groups
+        never take part. The result is a callout only when both sides were callouts."""
         changed = True
         while changed:
             changed = False
@@ -282,10 +336,12 @@ class _Packer:
                 nxt = self.drafts[i + 1] if i + 1 < len(self.drafts) else None
                 if prev is not None and self._mergeable(prev) and self._fits(prev, d.pieces, after=True):
                     prev.pieces.extend(d.pieces)
+                    prev.callout = prev.callout and d.callout
                     del self.drafts[i]
                 elif nxt is not None and self._mergeable(nxt) and self._fits(nxt, d.pieces, after=False):
                     nxt.pieces[:0] = d.pieces
                     nxt.overlap = d.overlap
+                    nxt.callout = nxt.callout and d.callout
                     del self.drafts[i]
                 else:
                     continue
@@ -370,12 +426,15 @@ def chunk_blocks(
     with_code = over_max = under_min = 0
     seq = 0
 
-    for sec_index, section in enumerate(group_sections(blocks)):
+    sections = merge_small_sections(group_sections(blocks), cfg, enc)
+    for sec_index, section in enumerate(sections):
         chapter = _chapter_for(section, chapters)
         drafts = pack_section(section, cfg, enc)
         if not drafts:
             continue
         section_tokens = len(enc.encode(section.token_text))
+        # A chapter intro has no heading; its title is the chapter title, as in the chunk header.
+        section_title = section.section_title or chapter.title
         windowed = section_tokens > cfg.parent_max_tokens
         section_parent_id = f"{doc_id}:{section.chapter_no:02d}:s{sec_index:03d}"
         content_blocks = [b for b in section.blocks if b.type != "chapter_title"]
@@ -384,7 +443,7 @@ def chunk_blocks(
                 Parent(
                     parent_id=section_parent_id,
                     chapter_no=section.chapter_no,
-                    section_title=section.section_title,
+                    section_title=section_title,
                     text=section.token_text,
                     page_printed_start=min(b.page_pdf for b in content_blocks) - printed_page_offset,
                     page_printed_end=max(b.page_pdf for b in content_blocks) - printed_page_offset,
@@ -400,7 +459,7 @@ def chunk_blocks(
             n_tokens = draft.tokens(enc)
             pdf_start, pdf_end = draft.pages()
             printed_start, printed_end = pdf_start - printed_page_offset, pdf_end - printed_page_offset
-            header = chunk_header(chapter, section.section_title, printed_start, printed_end)
+            header = chunk_header(chapter, section_title, printed_start, printed_end)
             kind = draft.kind
             payload: dict[str, Any] = {
                 "doc_id": doc_id,
@@ -409,7 +468,8 @@ def chunk_blocks(
                 "part": chapter.part,
                 "chapter_no": section.chapter_no,
                 "chapter_title": section.chapter_title,
-                "section_title": section.section_title,
+                "section_title": section_title,
+                "section_titles": draft.section_titles(section_title),
                 "page_pdf_start": pdf_start,
                 "page_pdf_end": pdf_end,
                 "page_printed_start": printed_start,
@@ -450,7 +510,7 @@ def chunk_blocks(
                     Parent(
                         parent_id=parent_id,
                         chapter_no=section.chapter_no,
-                        section_title=section.section_title,
+                        section_title=section_title,
                         text=text,
                         page_printed_start=min(pages) - printed_page_offset,
                         page_printed_end=max(pages) - printed_page_offset,

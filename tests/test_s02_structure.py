@@ -64,17 +64,25 @@ def cfg():
 
 def test_group_lines_by_top_within_tolerance(cfg) -> None:
     words = [W("b", 100, 77.2), W("a", 65, 78.1), W("c", 65, 93.2), W("d", 200, 93.0)]
-    lines = s2.group_lines(words, cfg.line_tolerance_pt)
+    lines = s2.group_lines(words, cfg.line_tolerance_pt, join_max_gap_pt=cfg.word_join_max_gap_pt)
     assert [[w.text for w in ln.words] for ln in lines] == [["a", "b"], ["c", "d"]]
     assert lines[0].page_pdf == 66 and lines[0].top == pytest.approx(77.2)
 
 
 def test_line_type_by_dominant_font_and_rect(cfg) -> None:
     def kind(words, rects=()):
-        return s2.line_type(s2.group_lines(words, 2)[0], list(rects), cfg)
+        return s2.line_type(s2.group_lines(words, 2, join_max_gap_pt=cfg.word_join_max_gap_pt)[0], list(rects), cfg)
 
     assert kind(prose_line("Chapter body text here", 100)) == "paragraph"
     assert kind(code_line("class CustomerDTO", 150)) == "code"
+    # Inline code: one long mono identifier outweighs the Inter words around it. Off a code
+    # rectangle the line stays a paragraph; on one it is code (CONTEXT.md, "Inline code").
+    inline = [W("There's", 65, 200), W("a", 103, 200), W("new", 112, 200),
+              W("ReflectionProperty::isReadOnly()", 132, 200, font=MONO, size=9.0),
+              W("flag.", 310, 200)]
+    assert kind(inline) == "paragraph"
+    assert kind(inline, [Rect(65.2, 473.4, 195, 212, "code")]) == "code"
+    assert kind(inline, [Rect(65.2, 473.4, 195, 212, "callout")]) == "callout"
     assert kind([W("Property", 65, 88, font=STA, size=34)]) == "chapter_title"
     assert kind([W("Type", 65, 300, font=STA, size=14)]) == "heading"
     assert kind([W("Sub", 65, 300, font=STA, size=16)]) == "heading"
@@ -90,6 +98,16 @@ def test_line_type_by_dominant_font_and_rect(cfg) -> None:
 
 
 # --------------------------------------------------------------------------- code layout
+
+
+def test_touching_prose_words_join_without_a_space(cfg) -> None:
+    # pdfplumber splits a word at a font change, so `PaidInvoice` and `.` arrive as two words
+    # 0.2 pt apart. Words closer than `structure.word_join_max_gap_pt` join with no space.
+    words = [W("classes:", 65, 100), W("PaidInvoice", 110, 100, font=MONO, size=9.0),
+             W(".", 110 + 11 * CW + 0.2, 100), W("The", 110 + 11 * CW + 9, 100)]
+    line = s2.group_lines(words, cfg.line_tolerance_pt, join_max_gap_pt=cfg.word_join_max_gap_pt)[0]
+    assert line.text == "classes: PaidInvoice. The"
+    assert s2.line_type(line, [], cfg) == "paragraph"
 
 
 def test_code_metrics_measure_margin_and_char_width(cfg) -> None:
@@ -183,18 +201,44 @@ def test_heading_lines_wrap_into_one_heading(cfg) -> None:
 # --------------------------------------------------------------------------- across pages
 
 
+def test_paragraph_merges_across_pages_when_the_sentence_continues(cfg) -> None:
+    ends = cfg.sentence_end_chars
+    a = s2.RawBlock("paragraph", "isn't an integer after constructing the", 33, 500, 530, False, False)
+    b = s2.RawBlock("paragraph", "Money object, PHP will only throw an error.", 34, 77, 90, False, False)
+    merged, _, _, n_para = s2.merge_across_pages([a, b], ends, cfg.bullet_chars)
+    assert n_para == 1
+    assert [x.text for x in merged] == ["isn't an integer after constructing the Money object, PHP will only throw an error."]
+    assert merged[0].page_pdf == 33
+    done = s2.RawBlock("paragraph", "This sentence ends here.", 33, 500, 530, False, False)
+    merged, _, _, n_para = s2.merge_across_pages([done, b], ends, cfg.bullet_chars)
+    assert n_para == 0 and len(merged) == 2
+    # A bullet list has no final period but is complete; the next paragraph starts a new thought.
+    bullets = s2.RawBlock("paragraph", "• Whether the input is numeric • Whether the input isn't null", 57, 500, 530, False, False)
+    merged, _, _, n_para = s2.merge_across_pages([bullets, b], ends, cfg.bullet_chars)
+    assert n_para == 0
+    # The hyphen rule of join_prose applies across the page break too.
+    hyphen = s2.RawBlock("paragraph", "read the docu-", 33, 500, 530, False, False)
+    rest = s2.RawBlock("paragraph", "mentation first.", 34, 77, 90, False, False)
+    merged, _, _, n_para = s2.merge_across_pages([hyphen, rest], ends, cfg.bullet_chars)
+    assert n_para == 1 and merged[0].text == "read the documentation first."
+    # Never across a skipped page.
+    far = s2.RawBlock("paragraph", "Money object.", 36, 77, 90, False, False)
+    merged, _, _, n_para = s2.merge_across_pages([a, far], ends, cfg.bullet_chars)
+    assert n_para == 0 and len(merged) == 2
+
+
 def test_code_merges_across_pages_but_not_across_a_heading(cfg) -> None:
     a = s2.RawBlock("code", "class A\n{", 10, 500, 530, True, False)
     b = s2.RawBlock("code", "}", 11, 77, 90, True, False)
     h = s2.RawBlock("heading", "Next", 11, 77, 90, False, False)
     c = s2.RawBlock("code", "}", 11, 100, 110, True, False)
-    merged, n_code, _ = s2.merge_across_pages([a, b])
+    merged, n_code, _, _ = s2.merge_across_pages([a, b], cfg.sentence_end_chars, cfg.bullet_chars)
     assert n_code == 1 and [x.text for x in merged] == ["class A\n{\n}"]
-    merged, n_code, _ = s2.merge_across_pages([a, h, c])
+    merged, n_code, _, _ = s2.merge_across_pages([a, h, c], cfg.sentence_end_chars, cfg.bullet_chars)
     assert n_code == 0 and [x.type for x in merged] == ["code", "heading", "code"]
     # A blank or skipped page in between means two blocks, not one.
     far = s2.RawBlock("code", "}", 13, 77, 90, True, False)
-    merged, n_code, _ = s2.merge_across_pages([a, far])
+    merged, n_code, _, _ = s2.merge_across_pages([a, far], cfg.sentence_end_chars, cfg.bullet_chars)
     assert n_code == 0 and len(merged) == 2
 
 
@@ -202,9 +246,9 @@ def test_callout_merges_across_pages_only_when_next_has_no_title(cfg) -> None:
     a = s2.RawBlock("callout", "Title\nbody one", 101, 500, 600, True, True)
     cont = s2.RawBlock("callout", "body two", 102, 77, 120, True, False)
     fresh = s2.RawBlock("callout", "Other\nbody", 102, 77, 120, True, True)
-    merged, _, n_call = s2.merge_across_pages([a, cont])
+    merged, _, n_call, _ = s2.merge_across_pages([a, cont], cfg.sentence_end_chars, cfg.bullet_chars)
     assert n_call == 1 and merged[0].text == "Title\nbody one\n\nbody two"
-    merged, _, n_call = s2.merge_across_pages([a, fresh])
+    merged, _, n_call, _ = s2.merge_across_pages([a, fresh], cfg.sentence_end_chars, cfg.bullet_chars)
     assert n_call == 0 and len(merged) == 2
 
 

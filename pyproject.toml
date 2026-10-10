@@ -38,10 +38,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "ruff"]
+dev = ["pytest", "ruff", "pymupdf"]   # pymupdf: glyph oracle in tests/test_glyph_oracle.py, never the parser
 local = ["arize-phoenix"]   # Phoenix server for `make up-local` (no Docker)
 tools = ["fonttools"]        # tools/build_glyph_table.py
-eval = ["ragas"]
+eval = ["ragas", "rank-bm25", "langchain-text-splitters"]   # eval/chunk_retrieval.py: BM25 and the splitter baseline
 
 [project.scripts]
 flp = "flp_rag.cli:app"
@@ -59,3 +59,8 @@ target-version = "py312"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-m 'not live and not slow'"
+markers = [
+    "live: needs the running Qdrant alias with the current index; run with `pytest -m live`",
+    "slow: takes about a minute on the real book; run with `pytest -m slow`",
+]

@@ -1,0 +1,4486 @@
+{
+  "paired": {
+    "structural_vs_baseline_dense": {
+      "better": 7,
+      "equal": 18,
+      "worse": 5,
+      "sign_test_p": 0.7744140625
+    },
+    "structural_vs_baseline_bm25": {
+      "better": 5,
+      "equal": 23,
+      "worse": 2,
+      "sign_test_p": 0.453125
+    },
+    "structural_vs_no_header_dense": {
+      "better": 3,
+      "equal": 25,
+      "worse": 2,
+      "sign_test_p": 1.0
+    }
+  },
+  "answer_completeness": {
+    "corpus": {
+      "structural": {
+        "code_blocks": 375,
+        "whole_in_one_chunk": 375,
+        "split_by_design": 0,
+        "split": 0
+      },
+      "baseline": {
+        "code_blocks": 375,
+        "whole_in_one_chunk": 369,
+        "split_by_design": 0,
+        "split": 6
+      }
+    },
+    "questions": {
+      "structural_dense": {
+        "k": 5,
+        "questions": 9,
+        "whole_block_in_top_k": 9,
+        "cases": [
+          "g002",
+          "g005",
+          "g008",
+          "g011",
+          "g012",
+          "g014",
+          "g022",
+          "g027",
+          "g028"
+        ]
+      },
+      "structural_bm25": {
+        "k": 5,
+        "questions": 9,
+        "whole_block_in_top_k": 9,
+        "cases": [
+          "g002",
+          "g005",
+          "g008",
+          "g011",
+          "g012",
+          "g014",
+          "g022",
+          "g027",
+          "g028"
+        ]
+      },
+      "baseline_dense": {
+        "k": 5,
+        "questions": 9,
+        "whole_block_in_top_k": 9,
+        "cases": [
+          "g002",
+          "g005",
+          "g008",
+          "g011",
+          "g012",
+          "g014",
+          "g022",
+          "g027",
+          "g028"
+        ]
+      },
+      "baseline_bm25": {
+        "k": 5,
+        "questions": 9,
+        "whole_block_in_top_k": 9,
+        "cases": [
+          "g002",
+          "g005",
+          "g008",
+          "g011",
+          "g012",
+          "g014",
+          "g022",
+          "g027",
+          "g028"
+        ]
+      },
+      "structural_no_header_dense": {
+        "k": 5,
+        "questions": 9,
+        "whole_block_in_top_k": 9,
+        "cases": [
+          "g002",
+          "g005",
+          "g008",
+          "g011",
+          "g012",
+          "g014",
+          "g022",
+          "g027",
+          "g028"
+        ]
+      }
+    }
+  },
+  "date": "2026-10-10",
+  "chunk_config_hash": "d4ebab9ed10ca7e7",
+  "git_sha": "63389e1",
+  "embed_model": "BAAI/bge-m3",
+  "n_cases": 30,
+  "corpora": {
+    "structural": {
+      "n_docs": 202
+    },
+    "baseline": {
+      "n_docs": 185
+    }
+  },
+  "baseline": {
+    "splitter": "RecursiveCharacterTextSplitter.from_tiktoken_encoder",
+    "encoding": "cl100k_base",
+    "chunk_size": 400,
+    "chunk_overlap": 50
+  },
+  "systems": [
+    {
+      "name": "structural_dense",
+      "overall": {
+        "n": 30,
+        "recall@5": 1.0,
+        "recall@20": 1.0,
+        "mrr@10": 0.8594,
+        "evidence_share": 0.0581,
+        "no_hit": 0
+      },
+      "by_kind": {
+        "code": {
+          "n": 8,
+          "recall@5": 1.0,
+          "recall@20": 1.0,
+          "mrr@10": 0.9375,
+          "evidence_share": 0.0217,
+          "no_hit": 0
+        },
+        "comparison": {
+          "n": 7,
+          "recall@5": 1.0,
+          "recall@20": 1.0,
+          "mrr@10": 0.6476,
+          "evidence_share": 0.0825,
+          "no_hit": 0
+        },
+        "definition": {
+          "n": 8,
+          "recall@5": 1.0,
+          "recall@20": 1.0,
+          "mrr@10": 0.9375,
+          "evidence_share": 0.063,
+          "no_hit": 0
+        },
+        "how-to": {
+          "n": 7,
+          "recall@5": 1.0,
+          "recall@20": 1.0,
+          "mrr@10": 0.8929,
+          "evidence_share": 0.0699,
+          "no_hit": 0
+        }
+      },
+      "cases": [
+        {
+          "case_id": "g001",
+          "kind": "definition",
+          "chapter_no": 1,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:01:0003",
+          "evidence_share": 0.08136482939632546,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:01:0003",
+              "pages": [
+                11,
+                11
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:00:0000",
+              "pages": [
+                7,
+                8
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:26:0164",
+              "pages": [
+                271,
+                271
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g002",
+          "kind": "code",
+          "chapter_no": 2,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:02:0011",
+          "evidence_share": 0.011135857461024499,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:02:0011",
+              "pages": [
+                20,
+                21
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:15:0087",
+              "pages": [
+                156,
+                156
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:15:0089",
+              "pages": [
+                157,
+                157
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g003",
+          "kind": "comparison",
+          "chapter_no": 3,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:03:0025",
+          "evidence_share": 0.10469314079422383,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:03:0025",
+              "pages": [
+                44,
+                45
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:03:0026",
+              "pages": [
+                46,
+                47
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:03:0024",
+              "pages": [
+                43,
+                44
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g004",
+          "kind": "definition",
+          "chapter_no": 4,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:04:0033",
+          "evidence_share": 0.02997275204359673,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:04:0033",
+              "pages": [
+                59,
+                59
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:04:0035",
+              "pages": [
+                61,
+                62
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:29:0181",
+              "pages": [
+                295,
+                296
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g005",
+          "kind": "code",
+          "chapter_no": 5,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:05:0036",
+          "evidence_share": 0.023178807947019868,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:05:0036",
+              "pages": [
+                63,
+                65
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:05:0038",
+              "pages": [
+                68,
+                70
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:05:0040",
+              "pages": [
+                74,
+                74
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g006",
+          "kind": "how-to",
+          "chapter_no": 6,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:06:0045",
+          "evidence_share": 0.07792207792207792,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:06:0045",
+              "pages": [
+                83,
+                84
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:06:0042",
+              "pages": [
+                77,
+                79
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:06:0044",
+              "pages": [
+                82,
+                82
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g007",
+          "kind": "how-to",
+          "chapter_no": 7,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:07:0049",
+          "evidence_share": 0.08445945945945946,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:07:0049",
+              "pages": [
+                89,
+                91
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:07:0050",
+              "pages": [
+                91,
+                92
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:07:0046",
+              "pages": [
+                85,
+                86
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g008",
+          "kind": "code",
+          "chapter_no": 8,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:08:0058",
+          "evidence_share": 0.030501089324618737,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:08:0058",
+              "pages": [
+                105,
+                106
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:08:0056",
+              "pages": [
+                102,
+                102
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:08:0054",
+              "pages": [
+                99,
+                100
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g009",
+          "kind": "definition",
+          "chapter_no": 9,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:09:0065",
+          "evidence_share": 0.11848341232227488,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:09:0065",
+              "pages": [
+                119,
+                120
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:09:0066",
+              "pages": [
+                120,
+                121
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:09:0067",
+              "pages": [
+                121,
+                124
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g010",
+          "kind": "comparison",
+          "chapter_no": 10,
+          "rank": 2,
+          "hit_doc": "bca146b9df2d0a2b:10:0069",
+          "evidence_share": 0.11397058823529412,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:10:0071",
+              "pages": [
+                129,
+                129
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:10:0069",
+              "pages": [
+                127,
+                128
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:10:0070",
+              "pages": [
+                128,
+                128
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g011",
+          "kind": "code",
+          "chapter_no": 11,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:11:0072",
+          "evidence_share": 0.010893246187363835,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:11:0072",
+              "pages": [
+                131,
+                133
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:29:0184",
+              "pages": [
+                300,
+                301
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:10:0070",
+              "pages": [
+                128,
+                128
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g012",
+          "kind": "how-to",
+          "chapter_no": 12,
+          "rank": 4,
+          "hit_doc": "bca146b9df2d0a2b:12:0076",
+          "evidence_share": 0.07894736842105263,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:12:0077",
+              "pages": [
+                141,
+                141
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:12:0075",
+              "pages": [
+                138,
+                139
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:12:0078",
+              "pages": [
+                142,
+                142
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g013",
+          "kind": "comparison",
+          "chapter_no": 13,
+          "rank": 3,
+          "hit_doc": "bca146b9df2d0a2b:13:0080",
+          "evidence_share": 0.06802721088435375,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:13:0079",
+              "pages": [
+                143,
+                144
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:13:0082",
+              "pages": [
+                148,
+                148
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:13:0080",
+              "pages": [
+                145,
+                146
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g014",
+          "kind": "code",
+          "chapter_no": 14,
+          "rank": 2,
+          "hit_doc": "bca146b9df2d0a2b:14:0083",
+          "evidence_share": 0.022277227722772276,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:14:0085",
+              "pages": [
+                152,
+                153
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:14:0083",
+              "pages": [
+                149,
+                151
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:14:0084",
+              "pages": [
+                151,
+                152
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g015",
+          "kind": "definition",
+          "chapter_no": 15,
+          "rank": 2,
+          "hit_doc": "bca146b9df2d0a2b:15:0096",
+          "evidence_share": 0.04825737265415549,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:15:0094",
+              "pages": [
+                166,
+                167
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:15:0096",
+              "pages": [
+                171,
+                173
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:15:0093",
+              "pages": [
+                165,
+                166
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g016",
+          "kind": "definition",
+          "chapter_no": 16,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:16:0100",
+          "evidence_share": 0.07236842105263158,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:16:0100",
+              "pages": [
+                177,
+                177
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:26:0164",
+              "pages": [
+                271,
+                271
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:16:0104",
+              "pages": [
+                180,
+                183
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g017",
+          "kind": "comparison",
+          "chapter_no": 17,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:17:0115",
+          "evidence_share": 0.06451612903225806,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:17:0115",
+              "pages": [
+                202,
+                203
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:17:0116",
+              "pages": [
+                203,
+                205
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:17:0111",
+              "pages": [
+                195,
+                196
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g018",
+          "kind": "comparison",
+          "chapter_no": 18,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:18:0117",
+          "evidence_share": 0.06460674157303371,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:18:0117",
+              "pages": [
+                207,
+                208
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:16:0102",
+              "pages": [
+                178,
+                179
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:17:0111",
+              "pages": [
+                195,
+                196
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g019",
+          "kind": "definition",
+          "chapter_no": 19,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:19:0126",
+          "evidence_share": 0.06858407079646017,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:19:0126",
+              "pages": [
+                216,
+                217
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:19:0127",
+              "pages": [
+                218,
+                218
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:19:0121",
+              "pages": [
+                212,
+                212
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g020",
+          "kind": "how-to",
+          "chapter_no": 20,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:20:0131",
+          "evidence_share": 0.038461538461538464,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:20:0131",
+              "pages": [
+                222,
+                225
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:10:0070",
+              "pages": [
+                128,
+                128
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:20:0128",
+              "pages": [
+                219,
+                220
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g021",
+          "kind": "how-to",
+          "chapter_no": 21,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:21:0137",
+          "evidence_share": 0.08823529411764706,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:21:0137",
+              "pages": [
+                233,
+                233
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:02:0012",
+              "pages": [
+                22,
+                22
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:21:0134",
+              "pages": [
+                231,
+                232
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g022",
+          "kind": "code",
+          "chapter_no": 22,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:22:0144",
+          "evidence_share": 0.03535353535353535,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:22:0144",
+              "pages": [
+                242,
+                243
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:22:0150",
+              "pages": [
+                252,
+                252
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:22:0146",
+              "pages": [
+                247,
+                249
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g023",
+          "kind": "definition",
+          "chapter_no": 23,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:23:0152",
+          "evidence_share": 0.056372549019607844,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:23:0152",
+              "pages": [
+                255,
+                256
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:23:0154",
+              "pages": [
+                257,
+                258
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:02:0016",
+              "pages": [
+                26,
+                27
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g024",
+          "kind": "comparison",
+          "chapter_no": 24,
+          "rank": 5,
+          "hit_doc": "bca146b9df2d0a2b:24:0159",
+          "evidence_share": 0.07177033492822966,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:08:0053",
+              "pages": [
+                97,
+                98
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:24:0158",
+              "pages": [
+                261,
+                261
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:24:0157",
+              "pages": [
+                260,
+                260
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g025",
+          "kind": "comparison",
+          "chapter_no": 25,
+          "rank": 2,
+          "hit_doc": "bca146b9df2d0a2b:25:0162",
+          "evidence_share": 0.09,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:25:0163",
+              "pages": [
+                268,
+                269
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:25:0162",
+              "pages": [
+                266,
+                268
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:03:0023",
+              "pages": [
+                41,
+                43
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g026",
+          "kind": "definition",
+          "chapter_no": 26,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:26:0165",
+          "evidence_share": 0.02830188679245283,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:26:0165",
+              "pages": [
+                272,
+                273
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:26:0164",
+              "pages": [
+                271,
+                271
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:26:0167",
+              "pages": [
+                274,
+                275
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g027",
+          "kind": "code",
+          "chapter_no": 27,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:27:0170",
+          "evidence_share": 0.01805869074492099,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:27:0170",
+              "pages": [
+                279,
+                280
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:27:0169",
+              "pages": [
+                278,
+                279
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:27:0168",
+              "pages": [
+                277,
+                278
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g028",
+          "kind": "code",
+          "chapter_no": 28,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:28:0174",
+          "evidence_share": 0.0221606648199446,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:28:0174",
+              "pages": [
+                284,
+                285
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:28:0175",
+              "pages": [
+                286,
+                288
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:08:0057",
+              "pages": [
+                103,
+                104
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g029",
+          "kind": "how-to",
+          "chapter_no": 29,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:29:0188",
+          "evidence_share": 0.06666666666666667,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:29:0188",
+              "pages": [
+                304,
+                304
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:29:0190",
+              "pages": [
+                306,
+                306
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:29:0182",
+              "pages": [
+                296,
+                297
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g030",
+          "kind": "how-to",
+          "chapter_no": 30,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:30:0194",
+          "evidence_share": 0.05486284289276808,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:30:0194",
+              "pages": [
+                311,
+                312
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:30:0195",
+              "pages": [
+                313,
+                313
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:30:0191",
+              "pages": [
+                307,
+                308
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "structural_bm25",
+      "overall": {
+        "n": 30,
+        "recall@5": 1.0,
+        "recall@20": 1.0,
+        "mrr@10": 0.9011,
+        "evidence_share": 0.0581,
+        "no_hit": 0
+      },
+      "by_kind": {
+        "code": {
+          "n": 8,
+          "recall@5": 1.0,
+          "recall@20": 1.0,
+          "mrr@10": 0.9375,
+          "evidence_share": 0.0217,
+          "no_hit": 0
+        },
+        "comparison": {
+          "n": 7,
+          "recall@5": 1.0,
+          "recall@20": 1.0,
+          "mrr@10": 0.9048,
+          "evidence_share": 0.0825,
+          "no_hit": 0
+        },
+        "definition": {
+          "n": 8,
+          "recall@5": 1.0,
+          "recall@20": 1.0,
+          "mrr@10": 0.875,
+          "evidence_share": 0.063,
+          "no_hit": 0
+        },
+        "how-to": {
+          "n": 7,
+          "recall@5": 1.0,
+          "recall@20": 1.0,
+          "mrr@10": 0.8857,
+          "evidence_share": 0.0699,
+          "no_hit": 0
+        }
+      },
+      "cases": [
+        {
+          "case_id": "g001",
+          "kind": "definition",
+          "chapter_no": 1,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:01:0003",
+          "evidence_share": 0.08136482939632546,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:01:0003",
+              "pages": [
+                11,
+                11
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:29:0187",
+              "pages": [
+                303,
+                303
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:15:0088",
+              "pages": [
+                156,
+                156
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g002",
+          "kind": "code",
+          "chapter_no": 2,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:02:0011",
+          "evidence_share": 0.011135857461024499,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:02:0011",
+              "pages": [
+                20,
+                21
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:15:0089",
+              "pages": [
+                157,
+                157
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:18:0118",
+              "pages": [
+                209,
+                210
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g003",
+          "kind": "comparison",
+          "chapter_no": 3,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:03:0025",
+          "evidence_share": 0.10469314079422383,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:03:0025",
+              "pages": [
+                44,
+                45
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:03:0026",
+              "pages": [
+                46,
+                47
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:03:0027",
+              "pages": [
+                48,
+                49
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g004",
+          "kind": "definition",
+          "chapter_no": 4,
+          "rank": 2,
+          "hit_doc": "bca146b9df2d0a2b:04:0033",
+          "evidence_share": 0.02997275204359673,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:04:0035",
+              "pages": [
+                61,
+                62
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:04:0033",
+              "pages": [
+                59,
+                59
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:04:0034",
+              "pages": [
+                60,
+                61
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g005",
+          "kind": "code",
+          "chapter_no": 5,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:05:0036",
+          "evidence_share": 0.023178807947019868,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:05:0036",
+              "pages": [
+                63,
+                65
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:07:0046",
+              "pages": [
+                85,
+                86
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:05:0040",
+              "pages": [
+                74,
+                74
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g006",
+          "kind": "how-to",
+          "chapter_no": 6,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:06:0045",
+          "evidence_share": 0.07792207792207792,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:06:0045",
+              "pages": [
+                83,
+                84
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:06:0041",
+              "pages": [
+                75,
+                77
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:06:0042",
+              "pages": [
+                77,
+                79
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g007",
+          "kind": "how-to",
+          "chapter_no": 7,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:07:0049",
+          "evidence_share": 0.08445945945945946,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:07:0049",
+              "pages": [
+                89,
+                91
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:07:0050",
+              "pages": [
+                91,
+                92
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:07:0046",
+              "pages": [
+                85,
+                86
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g008",
+          "kind": "code",
+          "chapter_no": 8,
+          "rank": 2,
+          "hit_doc": "bca146b9df2d0a2b:08:0058",
+          "evidence_share": 0.030501089324618737,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:08:0056",
+              "pages": [
+                102,
+                102
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:08:0058",
+              "pages": [
+                105,
+                106
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:08:0054",
+              "pages": [
+                99,
+                100
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g009",
+          "kind": "definition",
+          "chapter_no": 9,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:09:0065",
+          "evidence_share": 0.11848341232227488,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:09:0065",
+              "pages": [
+                119,
+                120
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:09:0066",
+              "pages": [
+                120,
+                121
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:09:0067",
+              "pages": [
+                121,
+                124
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g010",
+          "kind": "comparison",
+          "chapter_no": 10,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:10:0069",
+          "evidence_share": 0.11397058823529412,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:10:0069",
+              "pages": [
+                127,
+                128
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:10:0071",
+              "pages": [
+                129,
+                129
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:10:0070",
+              "pages": [
+                128,
+                128
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g011",
+          "kind": "code",
+          "chapter_no": 11,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:11:0072",
+          "evidence_share": 0.010893246187363835,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:11:0072",
+              "pages": [
+                131,
+                133
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:29:0184",
+              "pages": [
+                300,
+                301
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:30:0198",
+              "pages": [
+                316,
+                318
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g012",
+          "kind": "how-to",
+          "chapter_no": 12,
+          "rank": 5,
+          "hit_doc": "bca146b9df2d0a2b:12:0076",
+          "evidence_share": 0.07894736842105263,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:12:0075",
+              "pages": [
+                138,
+                139
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:12:0077",
+              "pages": [
+                141,
+                141
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:12:0078",
+              "pages": [
+                142,
+                142
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g013",
+          "kind": "comparison",
+          "chapter_no": 13,
+          "rank": 3,
+          "hit_doc": "bca146b9df2d0a2b:13:0080",
+          "evidence_share": 0.06802721088435375,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:13:0082",
+              "pages": [
+                148,
+                148
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:13:0079",
+              "pages": [
+                143,
+                144
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:13:0080",
+              "pages": [
+                145,
+                146
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g014",
+          "kind": "code",
+          "chapter_no": 14,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:14:0083",
+          "evidence_share": 0.022277227722772276,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:14:0083",
+              "pages": [
+                149,
+                151
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:14:0085",
+              "pages": [
+                152,
+                153
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:03:0018",
+              "pages": [
+                30,
+                32
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g015",
+          "kind": "definition",
+          "chapter_no": 15,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:15:0096",
+          "evidence_share": 0.04825737265415549,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:15:0096",
+              "pages": [
+                171,
+                173
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:15:0094",
+              "pages": [
+                166,
+                167
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:15:0098",
+              "pages": [
+                174,
+                175
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g016",
+          "kind": "definition",
+          "chapter_no": 16,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:16:0100",
+          "evidence_share": 0.07236842105263158,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:16:0100",
+              "pages": [
+                177,
+                177
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:03:0022",
+              "pages": [
+                38,
+                40
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:16:0104",
+              "pages": [
+                180,
+                183
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g017",
+          "kind": "comparison",
+          "chapter_no": 17,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:17:0115",
+          "evidence_share": 0.06451612903225806,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:17:0115",
+              "pages": [
+                202,
+                203
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:17:0116",
+              "pages": [
+                203,
+                205
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:17:0111",
+              "pages": [
+                195,
+                196
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g018",
+          "kind": "comparison",
+          "chapter_no": 18,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:18:0117",
+          "evidence_share": 0.06460674157303371,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:18:0117",
+              "pages": [
+                207,
+                208
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:18:0118",
+              "pages": [
+                209,
+                210
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:18:0119",
+              "pages": [
+                210,
+                210
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g019",
+          "kind": "definition",
+          "chapter_no": 19,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:19:0126",
+          "evidence_share": 0.06858407079646017,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:19:0126",
+              "pages": [
+                216,
+                217
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:19:0121",
+              "pages": [
+                212,
+                212
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:19:0127",
+              "pages": [
+                218,
+                218
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g020",
+          "kind": "how-to",
+          "chapter_no": 20,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:20:0131",
+          "evidence_share": 0.038461538461538464,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:20:0131",
+              "pages": [
+                222,
+                225
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:10:0070",
+              "pages": [
+                128,
+                128
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:07:0047",
+              "pages": [
+                86,
+                88
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g021",
+          "kind": "how-to",
+          "chapter_no": 21,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:21:0137",
+          "evidence_share": 0.08823529411764706,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:21:0137",
+              "pages": [
+                233,
+                233
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:22:0144",
+              "pages": [
+                242,
+                243
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:22:0148",
+              "pages": [
+                250,
+                251
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g022",
+          "kind": "code",
+          "chapter_no": 22,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:22:0144",
+          "evidence_share": 0.03535353535353535,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:22:0144",
+              "pages": [
+                242,
+                243
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:22:0142",
+              "pages": [
+                241,
+                241
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:22:0147",
+              "pages": [
+                249,
+                250
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g023",
+          "kind": "definition",
+          "chapter_no": 23,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:23:0152",
+          "evidence_share": 0.056372549019607844,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:23:0152",
+              "pages": [
+                255,
+                256
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:23:0153",
+              "pages": [
+                257,
+                257
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:23:0154",
+              "pages": [
+                257,
+                258
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g024",
+          "kind": "comparison",
+          "chapter_no": 24,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:24:0159",
+          "evidence_share": 0.07177033492822966,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:24:0159",
+              "pages": [
+                261,
+                262
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:30:0193",
+              "pages": [
+                310,
+                310
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:08:0060",
+              "pages": [
+                107,
+                110
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g025",
+          "kind": "comparison",
+          "chapter_no": 25,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:25:0162",
+          "evidence_share": 0.09,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:25:0162",
+              "pages": [
+                266,
+                268
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:03:0023",
+              "pages": [
+                41,
+                43
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:25:0163",
+              "pages": [
+                268,
+                269
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g026",
+          "kind": "definition",
+          "chapter_no": 26,
+          "rank": 2,
+          "hit_doc": "bca146b9df2d0a2b:26:0165",
+          "evidence_share": 0.02830188679245283,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:26:0166",
+              "pages": [
+                273,
+                273
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:26:0165",
+              "pages": [
+                272,
+                273
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:26:0167",
+              "pages": [
+                274,
+                275
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g027",
+          "kind": "code",
+          "chapter_no": 27,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:27:0170",
+          "evidence_share": 0.01805869074492099,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:27:0170",
+              "pages": [
+                279,
+                280
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:27:0168",
+              "pages": [
+                277,
+                278
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:27:0169",
+              "pages": [
+                278,
+                279
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g028",
+          "kind": "code",
+          "chapter_no": 28,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:28:0174",
+          "evidence_share": 0.0221606648199446,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:28:0174",
+              "pages": [
+                284,
+                285
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:28:0175",
+              "pages": [
+                286,
+                288
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:08:0056",
+              "pages": [
+                102,
+                102
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g029",
+          "kind": "how-to",
+          "chapter_no": 29,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:29:0188",
+          "evidence_share": 0.06666666666666667,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:29:0188",
+              "pages": [
+                304,
+                304
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:29:0189",
+              "pages": [
+                305,
+                306
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:29:0182",
+              "pages": [
+                296,
+                297
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g030",
+          "kind": "how-to",
+          "chapter_no": 30,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:30:0194",
+          "evidence_share": 0.05486284289276808,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:30:0194",
+              "pages": [
+                311,
+                312
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:30:0191",
+              "pages": [
+                307,
+                308
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:22:0143",
+              "pages": [
+                241,
+                242
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "baseline_dense",
+      "overall": {
+        "n": 30,
+        "recall@5": 0.9667,
+        "recall@20": 1.0,
+        "mrr@10": 0.8176,
+        "evidence_share": 0.0541,
+        "no_hit": 0
+      },
+      "by_kind": {
+        "code": {
+          "n": 8,
+          "recall@5": 1.0,
+          "recall@20": 1.0,
+          "mrr@10": 0.8542,
+          "evidence_share": 0.0215,
+          "no_hit": 0
+        },
+        "comparison": {
+          "n": 7,
+          "recall@5": 1.0,
+          "recall@20": 1.0,
+          "mrr@10": 0.8571,
+          "evidence_share": 0.0803,
+          "no_hit": 0
+        },
+        "definition": {
+          "n": 8,
+          "recall@5": 1.0,
+          "recall@20": 1.0,
+          "mrr@10": 0.7604,
+          "evidence_share": 0.0597,
+          "no_hit": 0
+        },
+        "how-to": {
+          "n": 7,
+          "recall@5": 0.8571,
+          "recall@20": 1.0,
+          "mrr@10": 0.8016,
+          "evidence_share": 0.0586,
+          "no_hit": 0
+        }
+      },
+      "cases": [
+        {
+          "case_id": "g001",
+          "kind": "definition",
+          "chapter_no": 1,
+          "rank": 1,
+          "hit_doc": "base:0002",
+          "evidence_share": 0.0950920245398773,
+          "top": [
+            {
+              "doc_id": "base:0002",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0003",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0000",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g002",
+          "kind": "code",
+          "chapter_no": 2,
+          "rank": 1,
+          "hit_doc": "base:0009",
+          "evidence_share": 0.01288659793814433,
+          "top": [
+            {
+              "doc_id": "base:0009",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0008",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0076",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g003",
+          "kind": "comparison",
+          "chapter_no": 3,
+          "rank": 2,
+          "hit_doc": "base:0021",
+          "evidence_share": 0.07591623036649214,
+          "top": [
+            {
+              "doc_id": "base:0022",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0021",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0023",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g004",
+          "kind": "definition",
+          "chapter_no": 4,
+          "rank": 3,
+          "hit_doc": "base:0030",
+          "evidence_share": 0.029411764705882353,
+          "top": [
+            {
+              "doc_id": "base:0033",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0167",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0030",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g005",
+          "kind": "code",
+          "chapter_no": 5,
+          "rank": 3,
+          "hit_doc": "base:0034",
+          "evidence_share": 0.019390581717451522,
+          "top": [
+            {
+              "doc_id": "base:0040",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0036",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0034",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g006",
+          "kind": "how-to",
+          "chapter_no": 6,
+          "rank": 1,
+          "hit_doc": "base:0042",
+          "evidence_share": 0.06486486486486487,
+          "top": [
+            {
+              "doc_id": "base:0042",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0178",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0041",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g007",
+          "kind": "how-to",
+          "chapter_no": 7,
+          "rank": 1,
+          "hit_doc": "base:0045",
+          "evidence_share": 0.0748502994011976,
+          "top": [
+            {
+              "doc_id": "base:0045",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0046",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0043",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g008",
+          "kind": "code",
+          "chapter_no": 8,
+          "rank": 1,
+          "hit_doc": "base:0052",
+          "evidence_share": 0.041916167664670656,
+          "top": [
+            {
+              "doc_id": "base:0052",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0050",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0049",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g009",
+          "kind": "definition",
+          "chapter_no": 9,
+          "rank": 1,
+          "hit_doc": "base:0059",
+          "evidence_share": 0.06527415143603134,
+          "top": [
+            {
+              "doc_id": "base:0059",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0060",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0058",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g010",
+          "kind": "comparison",
+          "chapter_no": 10,
+          "rank": 2,
+          "hit_doc": "base:0062",
+          "evidence_share": 0.09627329192546584,
+          "top": [
+            {
+              "doc_id": "base:0063",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0062",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0064",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g011",
+          "kind": "code",
+          "chapter_no": 11,
+          "rank": 1,
+          "hit_doc": "base:0064",
+          "evidence_share": 0.013157894736842105,
+          "top": [
+            {
+              "doc_id": "base:0064",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0171",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0065",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g012",
+          "kind": "how-to",
+          "chapter_no": 12,
+          "rank": 1,
+          "hit_doc": "base:0069",
+          "evidence_share": 0.05070422535211268,
+          "top": [
+            {
+              "doc_id": "base:0069",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0068",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0067",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g013",
+          "kind": "comparison",
+          "chapter_no": 13,
+          "rank": 1,
+          "hit_doc": "base:0071",
+          "evidence_share": 0.0547945205479452,
+          "top": [
+            {
+              "doc_id": "base:0071",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0070",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0073",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g014",
+          "kind": "code",
+          "chapter_no": 14,
+          "rank": 1,
+          "hit_doc": "base:0074",
+          "evidence_share": 0.023746701846965697,
+          "top": [
+            {
+              "doc_id": "base:0074",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0075",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0056",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g015",
+          "kind": "definition",
+          "chapter_no": 15,
+          "rank": 2,
+          "hit_doc": "base:0086",
+          "evidence_share": 0.05642633228840126,
+          "top": [
+            {
+              "doc_id": "base:0084",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0086",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0081",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g016",
+          "kind": "definition",
+          "chapter_no": 16,
+          "rank": 1,
+          "hit_doc": "base:0089",
+          "evidence_share": 0.028132992327365727,
+          "top": [
+            {
+              "doc_id": "base:0089",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0093",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0092",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g017",
+          "kind": "comparison",
+          "chapter_no": 17,
+          "rank": 1,
+          "hit_doc": "base:0105",
+          "evidence_share": 0.07608695652173914,
+          "top": [
+            {
+              "doc_id": "base:0105",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0106",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0100",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g018",
+          "kind": "comparison",
+          "chapter_no": 18,
+          "rank": 1,
+          "hit_doc": "base:0107",
+          "evidence_share": 0.06371191135734072,
+          "top": [
+            {
+              "doc_id": "base:0107",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0071",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0100",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g019",
+          "kind": "definition",
+          "chapter_no": 19,
+          "rank": 1,
+          "hit_doc": "base:0116",
+          "evidence_share": 0.09171597633136094,
+          "top": [
+            {
+              "doc_id": "base:0116",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0110",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0111",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g020",
+          "kind": "how-to",
+          "chapter_no": 20,
+          "rank": 9,
+          "hit_doc": "base:0121",
+          "evidence_share": 0.0670926517571885,
+          "top": [
+            {
+              "doc_id": "base:0120",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0063",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0117",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g021",
+          "kind": "how-to",
+          "chapter_no": 21,
+          "rank": 2,
+          "hit_doc": "base:0126",
+          "evidence_share": 0.04774535809018567,
+          "top": [
+            {
+              "doc_id": "base:0124",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0126",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0129",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g022",
+          "kind": "code",
+          "chapter_no": 22,
+          "rank": 2,
+          "hit_doc": "base:0132",
+          "evidence_share": 0.019230769230769232,
+          "top": [
+            {
+              "doc_id": "base:0134",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0132",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0133",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g023",
+          "kind": "definition",
+          "chapter_no": 23,
+          "rank": 4,
+          "hit_doc": "base:0140",
+          "evidence_share": 0.0647887323943662,
+          "top": [
+            {
+              "doc_id": "base:0142",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0143",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0012",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g024",
+          "kind": "comparison",
+          "chapter_no": 24,
+          "rank": 1,
+          "hit_doc": "base:0146",
+          "evidence_share": 0.09966777408637874,
+          "top": [
+            {
+              "doc_id": "base:0146",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0049",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0048",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g025",
+          "kind": "comparison",
+          "chapter_no": 25,
+          "rank": 1,
+          "hit_doc": "base:0149",
+          "evidence_share": 0.09574468085106383,
+          "top": [
+            {
+              "doc_id": "base:0149",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0150",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0020",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g026",
+          "kind": "definition",
+          "chapter_no": 26,
+          "rank": 1,
+          "hit_doc": "base:0152",
+          "evidence_share": 0.046753246753246755,
+          "top": [
+            {
+              "doc_id": "base:0152",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0151",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0154",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g027",
+          "kind": "code",
+          "chapter_no": 27,
+          "rank": 1,
+          "hit_doc": "base:0157",
+          "evidence_share": 0.020833333333333332,
+          "top": [
+            {
+              "doc_id": "base:0157",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0158",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0155",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g028",
+          "kind": "code",
+          "chapter_no": 28,
+          "rank": 1,
+          "hit_doc": "base:0160",
+          "evidence_share": 0.021052631578947368,
+          "top": [
+            {
+              "doc_id": "base:0160",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0051",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0161",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g029",
+          "kind": "how-to",
+          "chapter_no": 29,
+          "rank": 1,
+          "hit_doc": "base:0174",
+          "evidence_share": 0.0469208211143695,
+          "top": [
+            {
+              "doc_id": "base:0174",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0173",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0175",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g030",
+          "kind": "how-to",
+          "chapter_no": 30,
+          "rank": 1,
+          "hit_doc": "base:0178",
+          "evidence_share": 0.05774278215223097,
+          "top": [
+            {
+              "doc_id": "base:0178",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0179",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0175",
+              "pages": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "baseline_bm25",
+      "overall": {
+        "n": 30,
+        "recall@5": 0.9667,
+        "recall@20": 0.9667,
+        "mrr@10": 0.8389,
+        "evidence_share": 0.0541,
+        "no_hit": 0
+      },
+      "by_kind": {
+        "code": {
+          "n": 8,
+          "recall@5": 1.0,
+          "recall@20": 1.0,
+          "mrr@10": 0.8438,
+          "evidence_share": 0.0215,
+          "no_hit": 0
+        },
+        "comparison": {
+          "n": 7,
+          "recall@5": 1.0,
+          "recall@20": 1.0,
+          "mrr@10": 0.9048,
+          "evidence_share": 0.0803,
+          "no_hit": 0
+        },
+        "definition": {
+          "n": 8,
+          "recall@5": 1.0,
+          "recall@20": 1.0,
+          "mrr@10": 0.7604,
+          "evidence_share": 0.0597,
+          "no_hit": 0
+        },
+        "how-to": {
+          "n": 7,
+          "recall@5": 0.8571,
+          "recall@20": 0.8571,
+          "mrr@10": 0.8571,
+          "evidence_share": 0.0586,
+          "no_hit": 0
+        }
+      },
+      "cases": [
+        {
+          "case_id": "g001",
+          "kind": "definition",
+          "chapter_no": 1,
+          "rank": 1,
+          "hit_doc": "base:0002",
+          "evidence_share": 0.0950920245398773,
+          "top": [
+            {
+              "doc_id": "base:0002",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0000",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0173",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g002",
+          "kind": "code",
+          "chapter_no": 2,
+          "rank": 1,
+          "hit_doc": "base:0009",
+          "evidence_share": 0.01288659793814433,
+          "top": [
+            {
+              "doc_id": "base:0009",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0008",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0108",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g003",
+          "kind": "comparison",
+          "chapter_no": 3,
+          "rank": 1,
+          "hit_doc": "base:0021",
+          "evidence_share": 0.07591623036649214,
+          "top": [
+            {
+              "doc_id": "base:0021",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0022",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0024",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g004",
+          "kind": "definition",
+          "chapter_no": 4,
+          "rank": 3,
+          "hit_doc": "base:0030",
+          "evidence_share": 0.029411764705882353,
+          "top": [
+            {
+              "doc_id": "base:0031",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0033",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0030",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g005",
+          "kind": "code",
+          "chapter_no": 5,
+          "rank": 1,
+          "hit_doc": "base:0034",
+          "evidence_share": 0.019390581717451522,
+          "top": [
+            {
+              "doc_id": "base:0034",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0075",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0101",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g006",
+          "kind": "how-to",
+          "chapter_no": 6,
+          "rank": 1,
+          "hit_doc": "base:0042",
+          "evidence_share": 0.06486486486486487,
+          "top": [
+            {
+              "doc_id": "base:0042",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0038",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0039",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g007",
+          "kind": "how-to",
+          "chapter_no": 7,
+          "rank": 1,
+          "hit_doc": "base:0045",
+          "evidence_share": 0.0748502994011976,
+          "top": [
+            {
+              "doc_id": "base:0045",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0046",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0044",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g008",
+          "kind": "code",
+          "chapter_no": 8,
+          "rank": 2,
+          "hit_doc": "base:0052",
+          "evidence_share": 0.041916167664670656,
+          "top": [
+            {
+              "doc_id": "base:0049",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0052",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0050",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g009",
+          "kind": "definition",
+          "chapter_no": 9,
+          "rank": 1,
+          "hit_doc": "base:0059",
+          "evidence_share": 0.06527415143603134,
+          "top": [
+            {
+              "doc_id": "base:0059",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0060",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0058",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g010",
+          "kind": "comparison",
+          "chapter_no": 10,
+          "rank": 1,
+          "hit_doc": "base:0062",
+          "evidence_share": 0.09627329192546584,
+          "top": [
+            {
+              "doc_id": "base:0062",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0063",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0064",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g011",
+          "kind": "code",
+          "chapter_no": 11,
+          "rank": 1,
+          "hit_doc": "base:0064",
+          "evidence_share": 0.013157894736842105,
+          "top": [
+            {
+              "doc_id": "base:0064",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0065",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0182",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g012",
+          "kind": "how-to",
+          "chapter_no": 12,
+          "rank": 1,
+          "hit_doc": "base:0069",
+          "evidence_share": 0.05070422535211268,
+          "top": [
+            {
+              "doc_id": "base:0069",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0067",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0010",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g013",
+          "kind": "comparison",
+          "chapter_no": 13,
+          "rank": 1,
+          "hit_doc": "base:0071",
+          "evidence_share": 0.0547945205479452,
+          "top": [
+            {
+              "doc_id": "base:0071",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0073",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0070",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g014",
+          "kind": "code",
+          "chapter_no": 14,
+          "rank": 4,
+          "hit_doc": "base:0074",
+          "evidence_share": 0.023746701846965697,
+          "top": [
+            {
+              "doc_id": "base:0075",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0073",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0014",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g015",
+          "kind": "definition",
+          "chapter_no": 15,
+          "rank": 1,
+          "hit_doc": "base:0086",
+          "evidence_share": 0.05642633228840126,
+          "top": [
+            {
+              "doc_id": "base:0086",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0088",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0081",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g016",
+          "kind": "definition",
+          "chapter_no": 16,
+          "rank": 1,
+          "hit_doc": "base:0089",
+          "evidence_share": 0.028132992327365727,
+          "top": [
+            {
+              "doc_id": "base:0089",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0093",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0004",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g017",
+          "kind": "comparison",
+          "chapter_no": 17,
+          "rank": 3,
+          "hit_doc": "base:0105",
+          "evidence_share": 0.07608695652173914,
+          "top": [
+            {
+              "doc_id": "base:0104",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0106",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0105",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g018",
+          "kind": "comparison",
+          "chapter_no": 18,
+          "rank": 1,
+          "hit_doc": "base:0107",
+          "evidence_share": 0.06371191135734072,
+          "top": [
+            {
+              "doc_id": "base:0107",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0108",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0109",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g019",
+          "kind": "definition",
+          "chapter_no": 19,
+          "rank": 1,
+          "hit_doc": "base:0116",
+          "evidence_share": 0.09171597633136094,
+          "top": [
+            {
+              "doc_id": "base:0116",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0110",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0113",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g020",
+          "kind": "how-to",
+          "chapter_no": 20,
+          "rank": 33,
+          "hit_doc": "base:0121",
+          "evidence_share": 0.0670926517571885,
+          "top": [
+            {
+              "doc_id": "base:0120",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0063",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0044",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g021",
+          "kind": "how-to",
+          "chapter_no": 21,
+          "rank": 1,
+          "hit_doc": "base:0126",
+          "evidence_share": 0.04774535809018567,
+          "top": [
+            {
+              "doc_id": "base:0126",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0132",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0130",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g022",
+          "kind": "code",
+          "chapter_no": 22,
+          "rank": 1,
+          "hit_doc": "base:0132",
+          "evidence_share": 0.019230769230769232,
+          "top": [
+            {
+              "doc_id": "base:0132",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0136",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0131",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g023",
+          "kind": "definition",
+          "chapter_no": 23,
+          "rank": 4,
+          "hit_doc": "base:0140",
+          "evidence_share": 0.0647887323943662,
+          "top": [
+            {
+              "doc_id": "base:0142",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0003",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0143",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g024",
+          "kind": "comparison",
+          "chapter_no": 24,
+          "rank": 1,
+          "hit_doc": "base:0146",
+          "evidence_share": 0.09966777408637874,
+          "top": [
+            {
+              "doc_id": "base:0146",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0048",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0054",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g025",
+          "kind": "comparison",
+          "chapter_no": 25,
+          "rank": 1,
+          "hit_doc": "base:0149",
+          "evidence_share": 0.09574468085106383,
+          "top": [
+            {
+              "doc_id": "base:0149",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0020",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0147",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g026",
+          "kind": "definition",
+          "chapter_no": 26,
+          "rank": 2,
+          "hit_doc": "base:0152",
+          "evidence_share": 0.046753246753246755,
+          "top": [
+            {
+              "doc_id": "base:0153",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0152",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0154",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g027",
+          "kind": "code",
+          "chapter_no": 27,
+          "rank": 1,
+          "hit_doc": "base:0157",
+          "evidence_share": 0.020833333333333332,
+          "top": [
+            {
+              "doc_id": "base:0157",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0155",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0153",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g028",
+          "kind": "code",
+          "chapter_no": 28,
+          "rank": 1,
+          "hit_doc": "base:0160",
+          "evidence_share": 0.021052631578947368,
+          "top": [
+            {
+              "doc_id": "base:0160",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0161",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0051",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g029",
+          "kind": "how-to",
+          "chapter_no": 29,
+          "rank": 1,
+          "hit_doc": "base:0174",
+          "evidence_share": 0.0469208211143695,
+          "top": [
+            {
+              "doc_id": "base:0174",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0173",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0126",
+              "pages": null
+            }
+          ]
+        },
+        {
+          "case_id": "g030",
+          "kind": "how-to",
+          "chapter_no": 30,
+          "rank": 1,
+          "hit_doc": "base:0178",
+          "evidence_share": 0.05774278215223097,
+          "top": [
+            {
+              "doc_id": "base:0178",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0179",
+              "pages": null
+            },
+            {
+              "doc_id": "base:0158",
+              "pages": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "structural_no_header_dense",
+      "overall": {
+        "n": 30,
+        "recall@5": 1.0,
+        "recall@20": 1.0,
+        "mrr@10": 0.8306,
+        "evidence_share": 0.0581,
+        "no_hit": 0
+      },
+      "by_kind": {
+        "code": {
+          "n": 8,
+          "recall@5": 1.0,
+          "recall@20": 1.0,
+          "mrr@10": 0.875,
+          "evidence_share": 0.0217,
+          "no_hit": 0
+        },
+        "comparison": {
+          "n": 7,
+          "recall@5": 1.0,
+          "recall@20": 1.0,
+          "mrr@10": 0.6548,
+          "evidence_share": 0.0825,
+          "no_hit": 0
+        },
+        "definition": {
+          "n": 8,
+          "recall@5": 1.0,
+          "recall@20": 1.0,
+          "mrr@10": 0.8542,
+          "evidence_share": 0.063,
+          "no_hit": 0
+        },
+        "how-to": {
+          "n": 7,
+          "recall@5": 1.0,
+          "recall@20": 1.0,
+          "mrr@10": 0.9286,
+          "evidence_share": 0.0699,
+          "no_hit": 0
+        }
+      },
+      "cases": [
+        {
+          "case_id": "g001",
+          "kind": "definition",
+          "chapter_no": 1,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:01:0003",
+          "evidence_share": 0.08136482939632546,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:01:0003",
+              "pages": [
+                11,
+                11
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:00:0002",
+              "pages": [
+                9,
+                9
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:31:0201",
+              "pages": [
+                321,
+                321
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g002",
+          "kind": "code",
+          "chapter_no": 2,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:02:0011",
+          "evidence_share": 0.011135857461024499,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:02:0011",
+              "pages": [
+                20,
+                21
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:15:0087",
+              "pages": [
+                156,
+                156
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:15:0089",
+              "pages": [
+                157,
+                157
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g003",
+          "kind": "comparison",
+          "chapter_no": 3,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:03:0025",
+          "evidence_share": 0.10469314079422383,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:03:0025",
+              "pages": [
+                44,
+                45
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:03:0026",
+              "pages": [
+                46,
+                47
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:03:0024",
+              "pages": [
+                43,
+                44
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g004",
+          "kind": "definition",
+          "chapter_no": 4,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:04:0033",
+          "evidence_share": 0.02997275204359673,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:04:0033",
+              "pages": [
+                59,
+                59
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:29:0181",
+              "pages": [
+                295,
+                296
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:04:0035",
+              "pages": [
+                61,
+                62
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g005",
+          "kind": "code",
+          "chapter_no": 5,
+          "rank": 2,
+          "hit_doc": "bca146b9df2d0a2b:05:0036",
+          "evidence_share": 0.023178807947019868,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:05:0038",
+              "pages": [
+                68,
+                70
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:05:0036",
+              "pages": [
+                63,
+                65
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:20:0130",
+              "pages": [
+                221,
+                222
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g006",
+          "kind": "how-to",
+          "chapter_no": 6,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:06:0045",
+          "evidence_share": 0.07792207792207792,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:06:0045",
+              "pages": [
+                83,
+                84
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:06:0042",
+              "pages": [
+                77,
+                79
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:06:0044",
+              "pages": [
+                82,
+                82
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g007",
+          "kind": "how-to",
+          "chapter_no": 7,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:07:0049",
+          "evidence_share": 0.08445945945945946,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:07:0049",
+              "pages": [
+                89,
+                91
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:07:0050",
+              "pages": [
+                91,
+                92
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:07:0046",
+              "pages": [
+                85,
+                86
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g008",
+          "kind": "code",
+          "chapter_no": 8,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:08:0058",
+          "evidence_share": 0.030501089324618737,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:08:0058",
+              "pages": [
+                105,
+                106
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:08:0056",
+              "pages": [
+                102,
+                102
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:08:0054",
+              "pages": [
+                99,
+                100
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g009",
+          "kind": "definition",
+          "chapter_no": 9,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:09:0065",
+          "evidence_share": 0.11848341232227488,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:09:0065",
+              "pages": [
+                119,
+                120
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:09:0066",
+              "pages": [
+                120,
+                121
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:09:0067",
+              "pages": [
+                121,
+                124
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g010",
+          "kind": "comparison",
+          "chapter_no": 10,
+          "rank": 2,
+          "hit_doc": "bca146b9df2d0a2b:10:0069",
+          "evidence_share": 0.11397058823529412,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:10:0071",
+              "pages": [
+                129,
+                129
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:10:0069",
+              "pages": [
+                127,
+                128
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:10:0070",
+              "pages": [
+                128,
+                128
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g011",
+          "kind": "code",
+          "chapter_no": 11,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:11:0072",
+          "evidence_share": 0.010893246187363835,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:11:0072",
+              "pages": [
+                131,
+                133
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:29:0184",
+              "pages": [
+                300,
+                301
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:10:0070",
+              "pages": [
+                128,
+                128
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g012",
+          "kind": "how-to",
+          "chapter_no": 12,
+          "rank": 2,
+          "hit_doc": "bca146b9df2d0a2b:12:0076",
+          "evidence_share": 0.07894736842105263,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:12:0078",
+              "pages": [
+                142,
+                142
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:12:0076",
+              "pages": [
+                139,
+                140
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:12:0077",
+              "pages": [
+                141,
+                141
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g013",
+          "kind": "comparison",
+          "chapter_no": 13,
+          "rank": 3,
+          "hit_doc": "bca146b9df2d0a2b:13:0080",
+          "evidence_share": 0.06802721088435375,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:13:0079",
+              "pages": [
+                143,
+                144
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:13:0082",
+              "pages": [
+                148,
+                148
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:13:0080",
+              "pages": [
+                145,
+                146
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g014",
+          "kind": "code",
+          "chapter_no": 14,
+          "rank": 2,
+          "hit_doc": "bca146b9df2d0a2b:14:0083",
+          "evidence_share": 0.022277227722772276,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:14:0085",
+              "pages": [
+                152,
+                153
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:14:0083",
+              "pages": [
+                149,
+                151
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:14:0084",
+              "pages": [
+                151,
+                152
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g015",
+          "kind": "definition",
+          "chapter_no": 15,
+          "rank": 3,
+          "hit_doc": "bca146b9df2d0a2b:15:0096",
+          "evidence_share": 0.04825737265415549,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:15:0094",
+              "pages": [
+                166,
+                167
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:15:0093",
+              "pages": [
+                165,
+                166
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:15:0096",
+              "pages": [
+                171,
+                173
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g016",
+          "kind": "definition",
+          "chapter_no": 16,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:16:0100",
+          "evidence_share": 0.07236842105263158,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:16:0100",
+              "pages": [
+                177,
+                177
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:26:0164",
+              "pages": [
+                271,
+                271
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:16:0104",
+              "pages": [
+                180,
+                183
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g017",
+          "kind": "comparison",
+          "chapter_no": 17,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:17:0115",
+          "evidence_share": 0.06451612903225806,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:17:0115",
+              "pages": [
+                202,
+                203
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:17:0116",
+              "pages": [
+                203,
+                205
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:17:0111",
+              "pages": [
+                195,
+                196
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g018",
+          "kind": "comparison",
+          "chapter_no": 18,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:18:0117",
+          "evidence_share": 0.06460674157303371,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:18:0117",
+              "pages": [
+                207,
+                208
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:18:0118",
+              "pages": [
+                209,
+                210
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:17:0111",
+              "pages": [
+                195,
+                196
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g019",
+          "kind": "definition",
+          "chapter_no": 19,
+          "rank": 2,
+          "hit_doc": "bca146b9df2d0a2b:19:0126",
+          "evidence_share": 0.06858407079646017,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:19:0127",
+              "pages": [
+                218,
+                218
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:19:0126",
+              "pages": [
+                216,
+                217
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:19:0121",
+              "pages": [
+                212,
+                212
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g020",
+          "kind": "how-to",
+          "chapter_no": 20,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:20:0131",
+          "evidence_share": 0.038461538461538464,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:20:0131",
+              "pages": [
+                222,
+                225
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:10:0070",
+              "pages": [
+                128,
+                128
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:08:0055",
+              "pages": [
+                100,
+                101
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g021",
+          "kind": "how-to",
+          "chapter_no": 21,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:21:0137",
+          "evidence_share": 0.08823529411764706,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:21:0137",
+              "pages": [
+                233,
+                233
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:02:0012",
+              "pages": [
+                22,
+                22
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:21:0134",
+              "pages": [
+                231,
+                232
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g022",
+          "kind": "code",
+          "chapter_no": 22,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:22:0144",
+          "evidence_share": 0.03535353535353535,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:22:0144",
+              "pages": [
+                242,
+                243
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:22:0146",
+              "pages": [
+                247,
+                249
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:22:0150",
+              "pages": [
+                252,
+                252
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g023",
+          "kind": "definition",
+          "chapter_no": 23,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:23:0152",
+          "evidence_share": 0.056372549019607844,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:23:0152",
+              "pages": [
+                255,
+                256
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:02:0016",
+              "pages": [
+                26,
+                27
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:23:0154",
+              "pages": [
+                257,
+                258
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g024",
+          "kind": "comparison",
+          "chapter_no": 24,
+          "rank": 4,
+          "hit_doc": "bca146b9df2d0a2b:24:0159",
+          "evidence_share": 0.07177033492822966,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:08:0053",
+              "pages": [
+                97,
+                98
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:24:0158",
+              "pages": [
+                261,
+                261
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:24:0157",
+              "pages": [
+                260,
+                260
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g025",
+          "kind": "comparison",
+          "chapter_no": 25,
+          "rank": 2,
+          "hit_doc": "bca146b9df2d0a2b:25:0162",
+          "evidence_share": 0.09,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:25:0163",
+              "pages": [
+                268,
+                269
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:25:0162",
+              "pages": [
+                266,
+                268
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:02:0013",
+              "pages": [
+                23,
+                23
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g026",
+          "kind": "definition",
+          "chapter_no": 26,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:26:0165",
+          "evidence_share": 0.02830188679245283,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:26:0165",
+              "pages": [
+                272,
+                273
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:26:0164",
+              "pages": [
+                271,
+                271
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:27:0168",
+              "pages": [
+                277,
+                278
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g027",
+          "kind": "code",
+          "chapter_no": 27,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:27:0170",
+          "evidence_share": 0.01805869074492099,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:27:0170",
+              "pages": [
+                279,
+                280
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:27:0169",
+              "pages": [
+                278,
+                279
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:27:0168",
+              "pages": [
+                277,
+                278
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g028",
+          "kind": "code",
+          "chapter_no": 28,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:28:0174",
+          "evidence_share": 0.0221606648199446,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:28:0174",
+              "pages": [
+                284,
+                285
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:08:0057",
+              "pages": [
+                103,
+                104
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:28:0175",
+              "pages": [
+                286,
+                288
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g029",
+          "kind": "how-to",
+          "chapter_no": 29,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:29:0188",
+          "evidence_share": 0.06666666666666667,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:29:0188",
+              "pages": [
+                304,
+                304
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:29:0189",
+              "pages": [
+                305,
+                306
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:29:0190",
+              "pages": [
+                306,
+                306
+              ]
+            }
+          ]
+        },
+        {
+          "case_id": "g030",
+          "kind": "how-to",
+          "chapter_no": 30,
+          "rank": 1,
+          "hit_doc": "bca146b9df2d0a2b:30:0194",
+          "evidence_share": 0.05486284289276808,
+          "top": [
+            {
+              "doc_id": "bca146b9df2d0a2b:30:0194",
+              "pages": [
+                311,
+                312
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:30:0195",
+              "pages": [
+                313,
+                313
+              ]
+            },
+            {
+              "doc_id": "bca146b9df2d0a2b:30:0191",
+              "pages": [
+                307,
+                308
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

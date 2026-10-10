@@ -174,6 +174,7 @@ def test_flp_ask_prints_chunks_with_chapter_pages_and_score(indexed, monkeypatch
 # --------------------------------------------------------------------------- live
 
 
+@pytest.mark.live
 @needs_live_alias
 def test_flp_ask_readonly_finds_chapter_6_on_the_real_index() -> None:
     result = CliRunner().invoke(cli.app, ["ask", "What is a readonly property?", "--top-k", "5"])

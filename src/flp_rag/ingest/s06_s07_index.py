@@ -19,7 +19,7 @@ in SQLite, and write the manifest.
 
 Rules (spec Section 5, Stage 7):
 1. `index_version` comes from the Stage 5 payload. The collection is `flp_chunks_{index_version}`
-   with named vectors `dense` (cosine) and `sparse_bm25`, and payload indexes on `chapter_no`,
+   with named vectors `dense` (cosine) and `sparse_bm25` (IDF modifier), and payload indexes on `chapter_no`,
    `has_code`, `section_title`, `php_symbols`.
 2. Points go into the new collection only. The collection behind the alias is never touched;
    re-indexing the collection that the alias points at is refused.
@@ -344,7 +344,9 @@ def create_collection(client: QdrantClient, name: str, dim: int) -> None:
     client.create_collection(
         name,
         vectors_config={DENSE_VECTOR: models.VectorParams(size=dim, distance=models.Distance.COSINE)},
-        sparse_vectors_config={SPARSE_VECTOR: models.SparseVectorParams()},
+        # The fastembed Qdrant/bm25 vectors hold the term-frequency part of BM25 only; Qdrant
+        # supplies the IDF part at query time when the sparse vector is declared with this modifier.
+        sparse_vectors_config={SPARSE_VECTOR: models.SparseVectorParams(modifier=models.Modifier.IDF)},
     )
     for field, schema in PAYLOAD_INDEXES.items():
         client.create_payload_index(name, field_name=field, field_schema=schema)

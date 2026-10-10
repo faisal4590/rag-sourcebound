@@ -6,8 +6,10 @@ Output: `data/blocks/{doc_id}.jsonl`, one `Block` per line.
 
 Line types come from the dominant font of a line and from the shaded rectangle under it:
 Staatliches 34 is a chapter title, Staatliches 14 or 16 is a heading outside a callout box and a
-callout title inside one, any mono font is code, Inter 9 `CHAPTER NN` is a label that is dropped,
-Inter 10 inside a callout box is callout body, and everything else is a paragraph.
+callout title inside one, a mono line on a code rectangle or made of mono words only is code (a
+mono-dominant prose line keeps its inline identifier and stays a paragraph), Inter 9 `CHAPTER NN`
+is a label that is dropped, Inter 10 inside a callout box is callout body, and everything else is
+a paragraph.
 """
 
 import re
@@ -48,10 +50,16 @@ class Line:
     top: float
     bottom: float
     words: tuple[Word, ...]
+    join_max_gap_pt: float  # two words closer than this touch: no space between them
 
     @property
     def text(self) -> str:
-        return " ".join(w.text for w in self.words)
+        """Words joined by a space, except where the gap says they touch. pdfplumber splits a
+        word at a font change, so `PaidInvoice` and `.` arrive as two words 0.2 pt apart."""
+        out = [self.words[0].text]
+        for prev, cur in zip(self.words, self.words[1:], strict=False):
+            out.append(("" if cur.x0 - prev.x1 < self.join_max_gap_pt else " ") + cur.text)
+        return "".join(out)
 
     @property
     def height(self) -> float:
@@ -94,6 +102,7 @@ class StructureResult:
     chapters_found: int
     code_blocks_merged_across_pages: int
     callouts_merged_across_pages: int
+    paragraphs_merged_across_pages: int
     labels_dropped: int
     output_path: Path
 
@@ -107,6 +116,7 @@ class StructureResult:
             "rag.chapters_found": self.chapters_found,
             "rag.code_blocks_merged_across_pages": self.code_blocks_merged_across_pages,
             "rag.callouts_merged_across_pages": self.callouts_merged_across_pages,
+            "rag.paragraphs_merged_across_pages": self.paragraphs_merged_across_pages,
             "rag.labels_dropped": self.labels_dropped,
         }
 
@@ -114,29 +124,31 @@ class StructureResult:
 # --------------------------------------------------------------------------- lines
 
 
-def group_lines(words: Iterable[Word], tolerance_pt: float) -> list[Line]:
+def group_lines(words: Iterable[Word], tolerance_pt: float, *, join_max_gap_pt: float) -> list[Line]:
     """Cluster words into lines by `top`. A new line starts when a word sits more than the
-    tolerance below the first word of the current line."""
+    tolerance below the first word of the current line. `join_max_gap_pt` is the gap under
+    which two words on a line touch (`structure.word_join_max_gap_pt`)."""
     ordered = sorted(words, key=lambda w: (w.top, w.x0))
     lines: list[Line] = []
     current: list[Word] = []
     for w in ordered:
         if current and w.top - current[0].top > tolerance_pt:
-            lines.append(_make_line(current))
+            lines.append(_make_line(current, join_max_gap_pt))
             current = []
         current.append(w)
     if current:
-        lines.append(_make_line(current))
+        lines.append(_make_line(current, join_max_gap_pt))
     return lines
 
 
-def _make_line(words: list[Word]) -> Line:
+def _make_line(words: list[Word], join_max_gap_pt: float) -> Line:
     by_x = tuple(sorted(words, key=lambda w: w.x0))
     return Line(
         page_pdf=by_x[0].page_pdf,
         top=min(w.top for w in by_x),
         bottom=max(w.bottom for w in by_x),
         words=by_x,
+        join_max_gap_pt=join_max_gap_pt,
     )
 
 
@@ -155,8 +167,13 @@ def _is_heading_font(font: str, cfg: StructureConfig) -> bool:
 
 def line_type(line: Line, rects: Sequence[Rect], cfg: StructureConfig) -> LineType:
     font, size = line.dominant()
-    if is_mono(font, cfg):
+    if is_mono(font, cfg) and (
+        _rect_for(line, rects, ("code", "highlight")) is not None
+        or all(is_mono(w.font, cfg) for w in line.words)
+    ):
         return "code"
+    # A mono-dominant line off a code rectangle with words in another font is prose around an
+    # inline identifier such as `ReflectionProperty::isReadOnly()` (CONTEXT.md, "Inline code").
     if _is_heading_font(font, cfg):
         if abs(size - cfg.chapter_title_size_pt) < 0.5:
             return "chapter_title"
@@ -294,7 +311,7 @@ class _Builder:
 
 def build_page_blocks(page: PageInput, cfg: StructureConfig) -> list[RawBlock]:
     """Typed blocks for one page, in reading order. Labels are dropped."""
-    lines = group_lines(page.words, cfg.line_tolerance_pt)
+    lines = group_lines(page.words, cfg.line_tolerance_pt, join_max_gap_pt=cfg.word_join_max_gap_pt)
     if not lines:
         return []
     typed = [(ln, line_type(ln, page.rects, cfg)) for ln in lines]
@@ -353,11 +370,16 @@ def _code_continues(
 # --------------------------------------------------------------------------- across pages
 
 
-def merge_across_pages(blocks: Sequence[RawBlock]) -> tuple[list[RawBlock], int, int]:
-    """Merge a code block that ends a page with a code block that starts the very next page, and
-    a callout with a title-less callout continuation. Returns (blocks, n_code, n_callout)."""
+def merge_across_pages(
+    blocks: Sequence[RawBlock], sentence_end_chars: Sequence[str], bullet_chars: Sequence[str]
+) -> tuple[list[RawBlock], int, int, int]:
+    """Merge a block that ends a page with the block that starts the very next page when they are
+    one unit: two code blocks; a callout and a title-less callout continuation; two paragraphs
+    when the first stops mid-sentence (no character from `sentence_end_chars` at its end, and it
+    is not a bullet list). Returns (blocks, n_code, n_callout, n_paragraph)."""
     out: list[RawBlock] = []
-    n_code = n_callout = 0
+    n_code = n_callout = n_paragraph = 0
+    ends = tuple(sentence_end_chars)
     for blk in blocks:
         prev = out[-1] if out else None
         # Only across one page boundary. A skipped part title page or a blank filler page
@@ -371,14 +393,25 @@ def merge_across_pages(blocks: Sequence[RawBlock]) -> tuple[list[RawBlock], int,
                 out[-1] = _merged(prev, blk, "\n\n")
                 n_callout += 1
                 continue
+            if prev.type == "paragraph" and blk.type == "paragraph" and _mid_sentence(prev.text, ends, bullet_chars):
+                out[-1] = _merged(prev, blk, "", text=join_prose([prev.text, blk.text]))
+                n_paragraph += 1
+                continue
         out.append(blk)
-    return out, n_code, n_callout
+    return out, n_code, n_callout, n_paragraph
 
 
-def _merged(a: RawBlock, b: RawBlock, sep: str) -> RawBlock:
+def _mid_sentence(text: str, ends: tuple[str, ...], bullet_chars: Sequence[str]) -> bool:
+    """A paragraph that ends a page mid-sentence: no sentence-end character at its end, and not
+    a bullet list, which is complete without a final period."""
+    stripped = text.rstrip()
+    return bool(stripped) and not stripped.endswith(ends) and not any(b in text for b in bullet_chars)
+
+
+def _merged(a: RawBlock, b: RawBlock, sep: str, *, text: str | None = None) -> RawBlock:
     return RawBlock(
         type=a.type,
-        text=a.text + sep + b.text,
+        text=a.text + sep + b.text if text is None else text,
         page_pdf=a.page_pdf,
         top=a.top,
         bottom=b.bottom,
@@ -456,11 +489,11 @@ def structure(
     raw: list[RawBlock] = []
     labels = 0
     for page in pages:
-        lines = group_lines(page.words, cfg.line_tolerance_pt)
+        lines = group_lines(page.words, cfg.line_tolerance_pt, join_max_gap_pt=cfg.word_join_max_gap_pt)
         labels += sum(1 for ln in lines if line_type(ln, page.rects, cfg) == "label")
         raw.extend(build_page_blocks(PageInput(page.page_pdf, page.words, page.rects), cfg))
 
-    merged, n_code, n_callout = merge_across_pages(raw)
+    merged, n_code, n_callout, n_paragraph = merge_across_pages(raw, cfg.sentence_end_chars, cfg.bullet_chars)
     blocks = attach_hierarchy(
         merged, chapters, doc_id=doc_id, printed_page_offset=settings.parse.printed_page_offset
     )
@@ -477,6 +510,7 @@ def structure(
         chapters_found=len({(b.chapter_no, b.chapter_title) for b in blocks}),
         code_blocks_merged_across_pages=n_code,
         callouts_merged_across_pages=n_callout,
+        paragraphs_merged_across_pages=n_paragraph,
         labels_dropped=labels,
         output_path=output_path,
     )

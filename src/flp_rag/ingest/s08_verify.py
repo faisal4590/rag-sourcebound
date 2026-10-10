@@ -6,8 +6,9 @@ smoke queries. Output: a `verify` block in the manifest and, when every check pa
 switch.
 
 Checks (spec Section 5, Stage 8):
-1. Coverage: every chapter has at least one chunk. Chapters under `verify.min_chunks_per_page`
-   are flagged, not failed.
+1. Coverage: every chapter has at least one chunk, and the chunks of a chapter cover at least
+   `verify.min_chapter_coverage` of its clean tokens (a block is covered when its normalized
+   text sits inside a chunk of the chapter). Chapters under the ratio are flagged, not failed.
 2. Duplicates: no two chunks share `display_text`.
 3. Smoke retrieval: every query in `verify.smoke_queries` returns its expected chapter in the
    top 5 dense results of the new collection.
@@ -27,9 +28,11 @@ from pathlib import Path
 from typing import Any
 
 import structlog
+import tiktoken
 from qdrant_client import QdrantClient, models
 
-from flp_rag.contracts import Attrs, Chapter, Chunk, read_jsonl
+from flp_rag.contracts import Attrs, Block, Chapter, Chunk, read_jsonl
+from flp_rag.ingest.s04_chunk import tokenizer
 from flp_rag.ingest.s06_s07_index import (
     COLLECTION_PREFIX,
     DENSE_VECTOR,
@@ -111,22 +114,48 @@ def load_smoke_queries(path: Path) -> list[SmokeQuery]:
     return out
 
 
-def check_coverage(chunks: Sequence[Chunk], chapters: Sequence[Chapter], min_per_page: float) -> CheckResult:
-    """Every chapter has a chunk. Thin chapters are flagged in the details, not failed."""
-    per_chapter: dict[tuple[int, str], int] = {}
+def normalize_text(text: str) -> str:
+    """Lowercase with whitespace runs collapsed: the form in which a block is looked up inside a
+    chunk. Shared with eval/chunk_checks.py so both coverage numbers mean the same thing."""
+    return " ".join(text.lower().split())
+
+
+def check_coverage(
+    chunks: Sequence[Chunk],
+    blocks: Sequence[Block],
+    chapters: Sequence[Chapter],
+    min_coverage: float,
+    enc: tiktoken.Encoding,
+) -> CheckResult:
+    """Every chapter has a chunk, and the chunks of a chapter cover at least `min_coverage` of
+    its clean tokens. A block is covered when its normalized text is a substring of a normalized
+    chunk of the same chapter; chapter titles are not chunk text and do not count. Chapters
+    under the ratio are flagged in the details with their uncovered block ids, not failed."""
+    chunk_texts: dict[int, list[str]] = {}
     for c in chunks:
-        key = (int(c.payload["chapter_no"]), str(c.payload["chapter_title"]))
-        per_chapter[key] = per_chapter.get(key, 0) + 1
-    empty = [ch.title for ch in chapters if per_chapter.get((ch.chapter_no, ch.title), 0) == 0]
+        chunk_texts.setdefault(int(c.payload["chapter_no"]), []).append(normalize_text(c.display_text))
+    empty = [ch.title for ch in chapters if not chunk_texts.get(ch.chapter_no)]
     thin: list[dict[str, Any]] = []
     for ch in chapters:
-        pages = ch.page_pdf_end - ch.page_pdf_start + 1
-        n = per_chapter.get((ch.chapter_no, ch.title), 0)
-        if pages > 0 and n / pages < min_per_page:
-            thin.append({"chapter": ch.title, "chunks": n, "pages": pages, "per_page": round(n / pages, 2)})
+        texts = chunk_texts.get(ch.chapter_no, [])
+        total = covered = 0
+        uncovered: list[str] = []
+        for b in blocks:
+            if b.chapter_no != ch.chapter_no or b.type == "chapter_title":
+                continue
+            n = len(enc.encode(b.text))
+            total += n
+            if any(normalize_text(b.text) in t for t in texts):
+                covered += n
+            else:
+                uncovered.append(b.block_id)
+        ratio = covered / total if total else 1.0
+        if ratio < min_coverage:
+            thin.append({"chapter": ch.title, "coverage": round(ratio, 4), "tokens": total,
+                         "uncovered_blocks": uncovered})
     return CheckResult(
         "coverage", passed=not empty,
-        details={"chapters": len(chapters), "empty": empty, "under_min_per_page": thin},
+        details={"chapters": len(chapters), "empty": empty, "under_min_coverage": thin},
     )
 
 
@@ -235,6 +264,7 @@ def verify(
     settings: Settings,
     *,
     in_dir: Path = Path("data/enriched"),
+    clean_dir: Path = Path("data/clean"),
     parsed_dir: Path = Path("data/parsed"),
     index_dir: Path = Path("data/index"),
     smoke_path: Path | None = None,
@@ -257,6 +287,7 @@ def verify(
     if "collection" not in manifest:
         raise ValueError(f"{manifest_path} has no `collection`; rerun Stage 7 for {index_version}")
     collection = str(manifest["collection"])
+    blocks = list(read_jsonl(clean_dir / f"{doc_id}.jsonl", Block))
 
     client = client or qdrant_client(settings)
     embedder = embedder or get_embeddings(settings)
@@ -264,7 +295,7 @@ def verify(
     queries = load_smoke_queries(smoke_path or (root / settings.verify.smoke_queries))
 
     checks = [
-        check_coverage(chunks, chapters, settings.verify.min_chunks_per_page),
+        check_coverage(chunks, blocks, chapters, settings.verify.min_chapter_coverage, tokenizer(settings.chunk)),
         check_duplicates(chunks),
         check_parents(version_dir / STORE_FILE),
     ]
@@ -272,9 +303,12 @@ def verify(
         smoke = check_smoke(client, collection, queries, embedder, cache)
     checks.append(smoke)
     passed = all(c.passed for c in checks)
-    flags = [f"{t['chapter']}: {t['chunks']} chunks over {t['pages']} pages" for t in checks[0].details["under_min_per_page"]]
+    flags = [
+        f"{t['chapter']}: coverage {t['coverage']} ({len(t['uncovered_blocks'])} blocks uncovered)"
+        for t in checks[0].details["under_min_coverage"]
+    ]
     for flag in flags:
-        log.warning("chapter under min chunks per page", detail=flag)
+        log.warning("chapter under min coverage", detail=flag)
 
     def report(*, switched: bool, previous: str | None, pruned: list[str]) -> dict[str, Any]:
         return {

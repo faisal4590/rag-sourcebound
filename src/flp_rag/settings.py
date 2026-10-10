@@ -7,7 +7,8 @@ section or key fails at load time with the offending name.
 
 Hashes stamped on the model:
 - `config_hash = sha256(file bytes)[:8]` goes on every trace (`rag.config_hash`).
-- `chunk_config_hash = sha256(canonical json of the chunk section)[:16]` names an index version
+- `chunk_config_hash = sha256(canonical json of the parse, structure, clean, and chunk sections
+  plus the source of ingest/s01_parse.py .. s05_enrich.py)[:16]` names an index version
   and lets Stage 1 skip a PDF that is already indexed with the same chunking.
 """
 
@@ -58,6 +59,9 @@ class StructureConfig(_Section):
     mono_char_width_ratio: float = Field(gt=0)
     default_mono_size_pt: float = Field(gt=0)
     code_min_gap_chars: float = Field(ge=0, le=1)
+    word_join_max_gap_pt: float = Field(ge=0)
+    sentence_end_chars: tuple[str, ...] = Field(min_length=1)
+    bullet_chars: tuple[str, ...] = Field(min_length=1)
 
 
 CleanRule = Literal["nfc", "nbsp", "zero_width", "whitespace", "page_number_lines"]
@@ -75,6 +79,7 @@ class ChunkConfig(_Section):
     code_max_tokens: int = Field(gt=0)
     overlap_paragraph_max_tokens: int = Field(ge=0)
     parent_max_tokens: int = Field(gt=0)
+    small_merge_max_tokens: int = Field(gt=0)
 
     @model_validator(mode="after")
     def _bounds_are_ordered(self) -> "ChunkConfig":
@@ -83,6 +88,11 @@ class ChunkConfig(_Section):
                 "chunk: need min_tokens <= target_tokens <= max_tokens <= code_max_tokens, got "
                 f"{self.min_tokens} <= {self.target_tokens} <= {self.max_tokens} "
                 f"<= {self.code_max_tokens}"
+            )
+        if self.small_merge_max_tokens < self.max_tokens:
+            raise ValueError(
+                "chunk: need small_merge_max_tokens >= max_tokens, got "
+                f"{self.small_merge_max_tokens} < {self.max_tokens}"
             )
         return self
 
@@ -110,7 +120,7 @@ class IndexConfig(_Section):
 
 
 class VerifyConfig(_Section):
-    min_chunks_per_page: float = Field(ge=0)
+    min_chapter_coverage: float = Field(ge=0, le=1)
     smoke_queries: Path
 
 
@@ -302,11 +312,43 @@ def _find_secret_keys(node: Any, prefix: str = "") -> list[str]:
     return found
 
 
-def chunk_config_hash(chunk: ChunkConfig) -> str:
-    """Stable hash of the validated chunk section. Defaults applied, keys sorted, so two files
-    with the same effective chunking give the same hash whether or not they spell out defaults."""
-    canonical = json.dumps(chunk.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(canonical.encode()).hexdigest()[:16]
+INGEST_DIR = Path(__file__).resolve().parent / "ingest"
+INGEST_SOURCE_FILES = (
+    "s01_parse.py", "s02_structure.py", "s03_clean.py", "s04_chunk.py", "s05_enrich.py",
+)
+
+
+def chunk_config_hash(
+    parse: ParseConfig,
+    structure: StructureConfig,
+    clean: CleanConfig,
+    chunk: ChunkConfig,
+    *,
+    source_dir: Path = INGEST_DIR,
+) -> str:
+    """Stable hash of everything that shapes a chunk set: the validated parse, structure, clean,
+    and chunk sections (defaults applied, keys sorted) plus the source text of Stages 1-5. A
+    rule change in the chunker changes the hash, so Stage 1 does not report "already indexed"
+    against an index built by the old rules. The git SHA stays a separate manifest field."""
+    sections = {
+        "parse": parse.model_dump(mode="json"),
+        "structure": structure.model_dump(mode="json"),
+        "clean": clean.model_dump(mode="json"),
+        "chunk": chunk.model_dump(mode="json"),
+    }
+    digest = hashlib.sha256(json.dumps(sections, sort_keys=True, separators=(",", ":")).encode())
+    for name in INGEST_SOURCE_FILES:
+        digest.update(name.encode())
+        digest.update((source_dir / name).read_bytes())
+    return digest.hexdigest()[:16]
+
+
+def _section(data: dict[str, Any], name: str, model: type[_Section], config_path: Path) -> Any:
+    if name not in data:
+        raise ValueError(f"{config_path}: missing `{name}` section")
+    if not isinstance(data[name], dict):
+        raise TypeError(f"{config_path}: `{name}` must be a mapping")
+    return model(**data[name])
 
 
 def load_settings(path: Path | str = DEFAULT_CONFIG_PATH) -> Settings:
@@ -316,17 +358,17 @@ def load_settings(path: Path | str = DEFAULT_CONFIG_PATH) -> Settings:
     data = yaml.safe_load(raw_bytes) or {}
     if not isinstance(data, dict):
         raise TypeError(f"{config_path} must hold a mapping at the top level")
-    # Validate the chunk section first: its hash names the index version (Stage 7) and gates
-    # the "already indexed" check (Stage 1). A missing section fails here with the field names.
-    if "chunk" not in data:
-        raise ValueError(f"{config_path}: missing `chunk` section")
-    chunk_section = data["chunk"]
-    if not isinstance(chunk_section, dict):
-        raise TypeError(f"{config_path}: `chunk` must be a mapping")
-    chunk = ChunkConfig(**chunk_section)
+    # Validate the ingestion sections first: their hash names the index version (Stage 7) and
+    # gates the "already indexed" check (Stage 1). A missing section fails here with its fields.
+    ingest_sections = (
+        _section(data, "parse", ParseConfig, config_path),
+        _section(data, "structure", StructureConfig, config_path),
+        _section(data, "clean", CleanConfig, config_path),
+        _section(data, "chunk", ChunkConfig, config_path),
+    )
     return Settings(
         **data,
         config_hash=hashlib.sha256(raw_bytes).hexdigest()[:8],
-        chunk_config_hash=chunk_config_hash(chunk),
+        chunk_config_hash=chunk_config_hash(*ingest_sections),
         config_path=config_path,
     )
