@@ -1,10 +1,10 @@
 # Chunk quality report, 2026-10-10
 
-Issue #62. Chunk set `chunk_config_hash d4ebab9ed10ca7e7`, git SHA `63389e1`, 202 chunks, embed model `BAAI/bge-m3`. "Before fixes" is the 207-chunk set `e9ca297723b994f1`, rebuilt into `data/_before_e9ca2977` without the page-break paragraph merge and the overlap fix (changes 11 and 12); the 279-chunk set that opened the issue appears where its numbers were recorded.
+Issue #62. Chunk set `chunk_config_hash d4ebab9ed10ca7e7`, git SHA `d11bd8c`, 202 chunks, embed model `BAAI/bge-m3`. "Before fixes" is the 207-chunk set `e9ca297723b994f1`, rebuilt into `data/_before_e9ca2977` without the page-break paragraph merge and the overlap fix (changes 11 and 12); the 279-chunk set that opened the issue appears where its numbers were recorded.
 
 ## Verdict
 
-**Freeze at chunk_config_hash `d4ebab9e`** (`d4ebab9ed10ca7e7`, git SHA `63389e1`). Levels 1 and 2 pass; dense retrieval over the structural chunks meets all three Level 3 targets (Recall@5 1.00, Recall@20 1.00, MRR@10 0.86); the flat 400/50 baseline wins on no metric.
+**Freeze at chunk_config_hash `d4ebab9e`** (`d4ebab9ed10ca7e7`, git SHA `d11bd8c`). Levels 1 and 2 pass; dense retrieval over the structural chunks meets all three Level 3 targets (Recall@5 1.00, Recall@20 1.00, MRR@10 0.86); the flat 400/50 baseline wins on no metric.
 
 The rank differences between structural and baseline are not significant on this question set: sign test p = 0.77 for dense (7 better, 18 equal, 5 worse) and p = 0.45 for BM25 (5 better, 23 equal, 2 worse). What structural chunking was designed for shows in answer completeness: 375 of 375 code blocks sit whole inside one chunk, against 369 of 375 for the baseline, which splits 6. None of those 6 blocks is one the golden questions quote, so at question level every system holds the whole evidence block in its top 5 for 9 of 9 code questions.
 
