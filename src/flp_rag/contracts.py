@@ -372,6 +372,13 @@ class EvalCase:
     expected_symbol: str | None
     expected_abstain: bool
     golden_version: str
+    # Issue #62, Level 3. `evidence_quotes` are exact substrings of the clean book text that
+    # answer the question; a retrieved chunk is a hit when it contains one. `kind` is the
+    # question type (definition, code, how-to, comparison) for per-kind metrics. `chapter_no`
+    # is the chapter that holds the evidence. Defaults keep older golden files loadable.
+    evidence_quotes: list[str] = dataclasses.field(default_factory=list)
+    kind: str = ""
+    chapter_no: int | None = None
 
     def __post_init__(self) -> None:
         _check_literals(self)
@@ -380,9 +387,12 @@ class EvalCase:
         return _attrs(
             case_id=self.case_id,
             group=self.group,
+            kind=self.kind,
+            chapter_no=self.chapter_no,
             expected_abstain=self.expected_abstain,
             expected_pages=self.expected_pages_printed,
             expected_symbol=self.expected_symbol,
+            evidence_quotes=len(self.evidence_quotes),
             golden_version=self.golden_version,
         )
 

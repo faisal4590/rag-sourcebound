@@ -144,3 +144,21 @@ def test_response_attrs_match_spec_names() -> None:
     assert attrs["rag.answer_chars"] == len(SAMPLES[8].answer)
     assert attrs["rag.index_version"] == "v1-bgem3-9c1e0f2a"
     assert attrs["rag.prompt_version"] == "ab12cd34"
+
+
+def test_eval_case_carries_evidence_kind_and_chapter_and_loads_the_golden_file() -> None:
+    from pathlib import Path
+
+    case = c.EvalCase(case_id="g009", group="answerable", question="What is a backed enum?",
+                      expected_answer="An enum with int or string values.", expected_pages_printed=[119, 120],
+                      expected_symbol=None, expected_abstain=False, golden_version="v1",
+                      evidence_quotes=["backed enums"], kind="definition", chapter_no=9)
+    attrs = case.to_attrs()
+    assert attrs["rag.kind"] == "definition" and attrs["rag.chapter_no"] == 9 and attrs["rag.evidence_quotes"] == 1
+    # Older golden files without the three fields still load.
+    legacy = c.EvalCase("g001", "answerable", "q", None, [1], None, False, "v1")
+    assert legacy.evidence_quotes == [] and legacy.kind == "" and legacy.chapter_no is None
+    golden = Path(__file__).resolve().parents[1] / "eval" / "golden_v1.jsonl"
+    cases = list(c.read_jsonl(golden, c.EvalCase))
+    assert len(cases) == 30 and all(case.evidence_quotes and case.kind and case.chapter_no for case in cases)
+    assert sorted({case.kind for case in cases}) == ["code", "comparison", "definition", "how-to"]
