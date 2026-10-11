@@ -191,7 +191,7 @@ class GateConfig(_Section):
 class ContextConfig(_Section):
     max_tokens: int = Field(gt=0)
     max_blocks: int = Field(gt=0)
-    order: Literal["position", "sandwich"]
+    order: Literal["position"]  # "sandwich" is the Milestone 7 experiment (issue #20, Part 6)
 
 
 class GenConfig(_Section):
@@ -290,6 +290,12 @@ class Settings(_Section):
             raise ValueError(
                 f"no price for configured model(s) {unpriced}; "
                 "add them under prices_usd_per_million_tokens"
+            )
+        if self.context.max_tokens <= self.chunk.small_merge_max_tokens:
+            raise ValueError(
+                f"context.max_tokens ({self.context.max_tokens}) must be larger than "
+                f"chunk.small_merge_max_tokens ({self.chunk.small_merge_max_tokens}) so the best "
+                "chunk always fits the context budget"
             )
         return self
 

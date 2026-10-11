@@ -54,6 +54,7 @@ from flp_rag.graph.state import RagState, initial_state
 from flp_rag.ingest.s06_s07_index import (
     COLLECTION_PREFIX,
     MANIFEST_FILE,
+    STORE_FILE,
     alias_target,
     qdrant_client,
 )
@@ -137,6 +138,8 @@ def create_app(
         owns_deps = deps is None
         d = deps or build_deps(settings)
         version, collection = current_index_version(settings, d)
+        if version is not None and d.store_path is None:
+            d.store_path = default_index_dir(settings) / version / STORE_FILE
         app.state.rag = AppState(
             settings=settings,
             deps=d,
