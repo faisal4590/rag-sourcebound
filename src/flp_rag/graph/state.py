@@ -13,7 +13,7 @@ from flp_rag.contracts import Candidate, ContextBlock, Response, Source, Standal
 from flp_rag.graph.nodes.retrieve import RetrievalFilters
 
 Status = Literal["answered", "no_information", "error"]
-GateDecision = Literal["pass", "borderline", "abstain"]
+GateDecision = Literal["pass", "abstain"]  # borderline is the flag below
 
 Turn = tuple[Literal["user", "assistant"], str]
 
@@ -39,6 +39,7 @@ class RagState(TypedDict, total=False):
     gate_decision: GateDecision
     borderline: bool
     top_score: float
+    n_pass: int  # candidates at or above gate.tau_pass, the ones Stage 15 may use
     # context, generation, checks (Stages 15-17)
     context: list[ContextBlock]
     answer: str
