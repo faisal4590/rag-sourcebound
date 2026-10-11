@@ -40,7 +40,7 @@ def stub_nodes(*, gate: str = "pass", smalltalk: bool = False, unfaithful: bool 
         if gate == "abstain":
             return {"gate_decision": "abstain", "status": "no_information", "answer": ABSTAIN_TEXT,
                     "abstain_reason": "gate.low_top_score", "top_score": 0.1}
-        return {"gate_decision": gate, "borderline": gate == "borderline", "top_score": 0.7}
+        return {"gate_decision": "pass", "borderline": gate == "borderline", "top_score": 0.7}
 
     def assemble(state: RagState) -> dict[str, Any]:
         return {"context": []}
@@ -109,7 +109,7 @@ def test_routing_functions() -> None:
     assert build.route_after_understand({"status": "no_information"}) == "respond"
     assert build.route_after_understand({}) == "retrieve"
     assert build.route_after_gate({"gate_decision": "pass"}) == "assemble"
-    assert build.route_after_gate({"gate_decision": "borderline"}) == "assemble"
+    assert build.route_after_gate({"gate_decision": "pass", "borderline": True}) == "assemble"
     assert build.route_after_gate({"gate_decision": "abstain"}) == "respond"
 
 
@@ -220,7 +220,7 @@ def test_default_nodes_run_real_retrieval_and_abstain_without_generation(monkeyp
     settings = settings.model_copy(update={
         "embed": settings.embed.model_copy(update={"dim": 8, "batch_size": 2}),
         # The fake embedder's cosines are arbitrary. Only an exact-text match (1.0) may pass.
-        "gate": settings.gate.model_copy(update={"tau_low": 0.999, "tau_pass": 0.999, "tau_high": 0.999}),
+        "gate": settings.gate.model_copy(update={"tau_low": 0.99, "tau_pass": 0.995, "tau_high": 0.999}),
     })
     tracing.configure_tracing(settings, exporter=InMemorySpanExporter(), force=True)
     write_jsonl(tmp / "enriched" / "d.jsonl", CHUNKS)
@@ -236,7 +236,8 @@ def test_default_nodes_run_real_retrieval_and_abstain_without_generation(monkeyp
     # Any question that is not an exact chunk text scores under 0.999, so the gate abstains.
     state = app.invoke(initial_state("completely unrelated question about cooking", request_id="r1", debug=True))
     assert state["visited"] == ["guard_input", "understand", "retrieve", "rerank", "gate", "respond"]
-    assert state["candidates"] and all(c.rerank_score == c.fused_score for c in state["candidates"])
+    # The stub rerank clamps the cosine into 0..1 (a fake cosine can be negative).
+    assert state["candidates"] and all(c.rerank_score == min(1.0, max(0.0, c.fused_score)) for c in state["candidates"])
     assert len(state["candidates"]) <= settings.rerank.top_n
     assert state["status"] == "no_information" and state["answer"] == ABSTAIN_TEXT
     assert state["abstain_reason"].startswith("gate.")

@@ -24,6 +24,7 @@ from langgraph.graph.state import CompiledStateGraph
 from qdrant_client import QdrantClient
 
 from flp_rag.contracts import Candidate, Response
+from flp_rag.graph.nodes import gate as gate_mod
 from flp_rag.graph.nodes import guard_input as guard_mod
 from flp_rag.graph.nodes import retrieve as retrieve_mod
 from flp_rag.graph.state import RagState
@@ -74,8 +75,8 @@ def route_after_understand(state: RagState) -> str:
 
 
 def route_after_gate(state: RagState) -> str:
-    """`pass` and `borderline` continue; `abstain` skips generation (spec Stage 14)."""
-    return "assemble" if state.get("gate_decision") in ("pass", "borderline") else "respond"
+    """`pass` continues (borderline is a flag on that path); `abstain` skips generation."""
+    return "assemble" if state.get("gate_decision") == "pass" else "respond"
 
 
 # --------------------------------------------------------------------------- build
@@ -141,13 +142,14 @@ class Deps:
 
 
 def default_nodes(deps: Deps) -> GraphNodes:
-    """Milestone 3 skeleton. Real: guard_input (#18), retrieve (dense, #15). Stubs that later
-    issues replace: understand passthrough (#27), rerank_score = fused_score (#26), a gate on
-    the stub score with the configured thresholds (#19), assemble (#20), generate (#21),
+    """Milestone 3 skeleton. Real: guard_input (#18), retrieve (dense, #15), gate (#19). Stubs
+    that later issues replace: understand passthrough (#27), rerank_score = fused_score (#26, so
+    the gate runs on dense cosine until the reranker lands), assemble (#20), generate (#21),
     check_output (#22), respond minimal (#23)."""
     s = deps.settings
 
     guard_input = guard_mod.make_guard_input(s)
+    gate = gate_mod.make_gate(s)
 
     def understand(state: RagState) -> dict[str, Any]:
         from flp_rag.contracts import StandaloneQuery
@@ -179,48 +181,20 @@ def default_nodes(deps: Deps) -> GraphNodes:
         return {"candidates": candidates}
 
     def rerank(state: RagState) -> dict[str, Any]:
+        # TODO(#26): remove with the real reranker. The dense cosine stands in for the rerank
+        # score; it can be negative for off-topic questions and the gate needs 0 to 1, so the
+        # stub clamps. The thresholds belong to the reranker's scale: recalibrate at #26.
         stubbed = [
-            Candidate(c.chunk_id, c.fused_score, c.fused_score, c.provenance, c.payload)
+            Candidate(
+                c.chunk_id,
+                c.fused_score,
+                min(1.0, max(0.0, c.fused_score)),
+                c.provenance,
+                c.payload,
+            )
             for c in state.get("candidates", [])
         ]
         return {"candidates": stubbed[: s.rerank.top_n]}
-
-    def gate(state: RagState) -> dict[str, Any]:
-        # Placeholder for #19: the spec's decision table on the stub score.
-        scores = [c.rerank_score or 0.0 for c in state.get("candidates", [])]
-        top = max(scores, default=0.0)
-        g = s.gate
-        n_pass = sum(1 for x in scores if x >= g.tau_pass)
-        if top < g.tau_low:
-            decision, reason = "abstain", "gate.low_top_score"
-        elif n_pass == 0:
-            decision, reason = "abstain", "gate.no_passing_chunk"
-        elif top < g.tau_high:
-            decision, reason = "borderline", None
-        else:
-            decision, reason = "pass", None
-        span = current_span()
-        for key, value in (
-            ("rag.gate_decision", decision),
-            ("rag.score_top1", top),
-            ("rag.n_pass", n_pass),
-            ("rag.tau_low", g.tau_low),
-            ("rag.tau_pass", g.tau_pass),
-            ("rag.tau_high", g.tau_high),
-            ("rag.borderline", decision == "borderline"),
-        ):
-            span.set_attribute(key, value)
-        if reason:
-            span.set_attribute("rag.abstain_reason", reason)
-            return {
-                "gate_decision": "abstain",
-                "borderline": False,
-                "top_score": top,
-                "status": "no_information",
-                "answer": ABSTAIN_TEXT,
-                "abstain_reason": reason,
-            }
-        return {"gate_decision": decision, "borderline": decision == "borderline", "top_score": top}
 
     def assemble(state: RagState) -> dict[str, Any]:
         raise NotImplementedError("Stage 15 context assembly is issue #20")
@@ -246,6 +220,7 @@ def default_nodes(deps: Deps) -> GraphNodes:
             debug={
                 "visited": [*state.get("visited", []), "respond"],
                 "abstain_reason": state.get("abstain_reason"),
+                **state.get("debug_info", {}),
             }
             if state.get("debug")
             else None,

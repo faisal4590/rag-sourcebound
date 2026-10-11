@@ -180,10 +180,10 @@ class GateConfig(_Section):
 
     @model_validator(mode="after")
     def _thresholds_are_ordered(self) -> "GateConfig":
-        if not self.tau_low <= self.tau_pass <= self.tau_high:
+        if not self.tau_low < self.tau_pass < self.tau_high:
             raise ValueError(
-                "gate: need tau_low <= tau_pass <= tau_high, got "
-                f"{self.tau_low} <= {self.tau_pass} <= {self.tau_high}"
+                "gate: need tau_low < tau_pass < tau_high, got "
+                f"tau_low={self.tau_low}, tau_pass={self.tau_pass}, tau_high={self.tau_high}"
             )
         return self
 
