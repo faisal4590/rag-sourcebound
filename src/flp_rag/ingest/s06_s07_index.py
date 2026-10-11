@@ -42,7 +42,7 @@ import pyarrow.parquet as pq
 import structlog
 from qdrant_client import QdrantClient, models
 
-from flp_rag.contracts import Attrs, Chunk, Parent, read_jsonl
+from flp_rag.contracts import Attrs, Block, Chunk, Parent, read_jsonl
 from flp_rag.models import (
     Embedder,
     SparseEmbedder,
@@ -299,6 +299,7 @@ class IndexResult:
     points_upserted: int
     parents_stored: int
     chunks_stored: int
+    blocks_stored: int
     alias_switched: bool
     manifest_path: Path
     store_path: Path
@@ -311,6 +312,7 @@ class IndexResult:
             "rag.points_upserted": self.points_upserted,
             "rag.parents_stored": self.parents_stored,
             "rag.chunks_stored": self.chunks_stored,
+            "rag.blocks_stored": self.blocks_stored,
             "rag.alias_switched": self.alias_switched,
         }
 
@@ -439,6 +441,14 @@ def _single_index_version(chunks: Sequence[Chunk]) -> str:
     return versions.pop()
 
 
+def _stored_blocks(store_path: Path) -> int:
+    """Block rows of an existing store (the resumable path reuses the store Stage 7 wrote)."""
+    if not store_path.exists():
+        return 0
+    with ParentStore.open_readonly(store_path) as store:
+        return store.count("blocks")
+
+
 @stage("ingest.index", kind="CHAIN")
 def index(
     doc_id: str,
@@ -447,12 +457,21 @@ def index(
     in_dir: Path = Path("data/enriched"),
     vectors_dir: Path = Path("data/vectors"),
     parents_dir: Path = Path("data/parents"),
+    clean_dir: Path = Path("data/clean"),
     index_dir: Path = Path("data/index"),
     client: QdrantClient | None = None,
 ) -> IndexResult:
     """Run Stage 7: a new collection, the parent store, and the manifest. The alias is untouched."""
     chunks = list(read_jsonl(in_dir / f"{doc_id}.jsonl", Chunk))
     parents = list(read_jsonl(parents_dir / f"{doc_id}.jsonl", Parent))
+    clean_path = clean_dir / f"{doc_id}.jsonl"
+    # The clean blocks give Stage 15 the code-block boundaries (issue #20). A fixture without
+    # them still indexes; the context then falls back to the plain chunk and parent text.
+    blocks = list(read_jsonl(clean_path, Block)) if clean_path.exists() else []
+    if not blocks:
+        log.warning(
+            "no clean blocks for the parent store; context will use plain text", path=str(clean_path)
+        )
     rows, vector_meta = read_vectors(vectors_dir / f"{doc_id}.parquet")
     index_version = _single_index_version(chunks)
     collection = collection_name(index_version)
@@ -482,7 +501,8 @@ def index(
             return IndexResult(
                 doc_id=doc_id, index_version=index_version, collection=collection,
                 points_upserted=client.count(collection, exact=True).count,
-                parents_stored=len(parents), chunks_stored=len(chunks), alias_switched=True,
+                parents_stored=len(parents), chunks_stored=len(chunks),
+                blocks_stored=_stored_blocks(store_path), alias_switched=True,
                 manifest_path=manifest_path, store_path=store_path,
             )
         raise RuntimeError(
@@ -505,6 +525,7 @@ def index(
     with ParentStore(store_path) as store:
         parents_stored = store.put_parents(parents)
         chunks_stored = store.put_chunks(chunks)
+        blocks_stored = store.put_blocks(blocks, chunks)
         if store.orphan_chunk_ids():
             raise AssertionError("orphans after the pre-check; the store write is inconsistent")
 
@@ -521,6 +542,7 @@ def index(
         points_upserted=points,
         parents_stored=parents_stored,
         chunks_stored=chunks_stored,
+        blocks_stored=blocks_stored,
         alias_switched=False,
         manifest_path=manifest_path,
         store_path=store_path,

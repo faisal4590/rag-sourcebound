@@ -114,7 +114,7 @@ gate:
 context:
   max_tokens: 6000
   max_blocks: 8
-  order: position                # position | sandwich
+  order: position                # sandwich is the Milestone 7 experiment
 
 gen:
   model: <generator-model-name>

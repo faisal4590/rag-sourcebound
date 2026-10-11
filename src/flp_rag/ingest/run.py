@@ -77,7 +77,8 @@ def run(
         ),
         "index": lambda: s06_s07_index.index(
             doc_id, settings, in_dir=data_dir / "enriched", vectors_dir=data_dir / "vectors",
-            parents_dir=data_dir / "parents", index_dir=data_dir / "index",
+            parents_dir=data_dir / "parents", clean_dir=data_dir / "clean",
+            index_dir=data_dir / "index",
         ),
         "verify": lambda: s08_verify.verify(
             doc_id, settings, in_dir=data_dir / "enriched", clean_dir=data_dir / "clean",

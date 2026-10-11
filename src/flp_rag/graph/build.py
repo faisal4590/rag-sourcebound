@@ -17,6 +17,7 @@ implementations that exist and marks the rest as Milestone 3 placeholders by iss
 import inspect
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from langgraph.graph import END, START, StateGraph
@@ -24,6 +25,7 @@ from langgraph.graph.state import CompiledStateGraph
 from qdrant_client import QdrantClient
 
 from flp_rag.contracts import Candidate, Response
+from flp_rag.graph.nodes import assemble as assemble_mod
 from flp_rag.graph.nodes import gate as gate_mod
 from flp_rag.graph.nodes import guard_input as guard_mod
 from flp_rag.graph.nodes import retrieve as retrieve_mod
@@ -138,18 +140,20 @@ class Deps:
     embedder: Embedder | None = None
     cache: EmbeddingCache | None = None
     collection: str | None = None
+    store_path: Path | None = None  # data/index/{index_version}/store.sqlite, for Stage 15
     extra: dict[str, Any] = field(default_factory=dict)
 
 
 def default_nodes(deps: Deps) -> GraphNodes:
-    """Milestone 3 skeleton. Real: guard_input (#18), retrieve (dense, #15), gate (#19). Stubs
-    that later issues replace: understand passthrough (#27), rerank_score = fused_score (#26, so
-    the gate runs on dense cosine until the reranker lands), assemble (#20), generate (#21),
-    check_output (#22), respond minimal (#23)."""
+    """Milestone 3 skeleton. Real: guard_input (#18), retrieve (dense, #15), gate (#19),
+    assemble (#20). Stubs that later issues replace: understand passthrough (#27),
+    rerank_score = fused_score (#26, so the gate runs on dense cosine until the reranker lands),
+    generate (#21), check_output (#22), respond minimal (#23)."""
     s = deps.settings
 
     guard_input = guard_mod.make_guard_input(s)
     gate = gate_mod.make_gate(s)
+    assemble = assemble_mod.make_assemble(s, deps.store_path)
 
     def understand(state: RagState) -> dict[str, Any]:
         from flp_rag.contracts import StandaloneQuery
@@ -195,9 +199,6 @@ def default_nodes(deps: Deps) -> GraphNodes:
             for c in state.get("candidates", [])
         ]
         return {"candidates": stubbed[: s.rerank.top_n]}
-
-    def assemble(state: RagState) -> dict[str, Any]:
-        raise NotImplementedError("Stage 15 context assembly is issue #20")
 
     def generate(state: RagState) -> dict[str, Any]:
         raise NotImplementedError("Stage 16 generation is issue #21")

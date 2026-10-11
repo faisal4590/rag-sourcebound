@@ -230,7 +230,8 @@ def test_default_nodes_run_real_retrieval_and_abstain_without_generation(monkeyp
     client = QdrantClient(":memory:")
     indexed = s7.index("d", settings, in_dir=tmp / "enriched", vectors_dir=tmp / "vectors",
                        parents_dir=tmp / "parents", index_dir=tmp / "index", client=client)
-    deps = build.Deps(settings=settings, client=client, embedder=embedder, collection=indexed.collection)
+    deps = build.Deps(settings=settings, client=client, embedder=embedder, collection=indexed.collection,
+                      store_path=indexed.store_path)
     app = build.compile_default(deps)
 
     # Any question that is not an exact chunk text scores under 0.999, so the gate abstains.
@@ -244,7 +245,7 @@ def test_default_nodes_run_real_retrieval_and_abstain_without_generation(monkeyp
     response = state["response"]
     assert response.status == "no_information" and response.debug["visited"][-1] == "respond"
 
-    # The exact text of a chunk scores 1.0 and passes the gate; the pass route then hits the
-    # Stage 15 placeholder, which names its issue.
-    with pytest.raises(NotImplementedError, match="#20"):
+    # The exact text of a chunk scores 1.0 and passes the gate; the pass route runs Stage 15 on
+    # the store (plain text, the fixture has no clean blocks) and hits the Stage 16 placeholder.
+    with pytest.raises(NotImplementedError, match="#21"):
         app.invoke(initial_state(CHUNKS[2].embedding_text, request_id="r2"))

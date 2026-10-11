@@ -42,6 +42,7 @@ class RagState(TypedDict, total=False):
     n_pass: int  # candidates at or above gate.tau_pass, the ones Stage 15 may use
     # context, generation, checks (Stages 15-17)
     context: list[ContextBlock]
+    label_map: dict[str, dict[str, Any]]  # label -> chunk ids, chapter, section, pages (Stage 15)
     answer: str
     # response (Stage 18)
     status: Status

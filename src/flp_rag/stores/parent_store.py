@@ -1,21 +1,24 @@
 # SQLite tables parents and chunks. Spec Section 5, Stage 7.
 """Parent store.
 
-One SQLite file per index version, `data/index/{index_version}/store.sqlite`, with two tables:
+One SQLite file per index version, `data/index/{index_version}/store.sqlite`, with three tables:
 - `parents(parent_id, chapter_no, section_title, text, page_printed_start, page_printed_end)`
 - `chunks(chunk_id, parent_id, display_text, payload_json)`
+- `blocks(block_id, parent_id, chunk_id, position, type, text, page_printed)`: the clean blocks
+  of every chunk, in book order, so Stage 15 can keep code inside fenced blocks (issue #20).
 
-Stage 15 reads parents by id to build the generator's context. Stage 8 checks that every
-`parent_id` in `chunks` exists in `parents`.
+Stage 15 reads parents and their blocks to build the generator's context. Stage 8 checks that
+every `parent_id` in `chunks` exists in `parents`.
 """
 
 import json
 import sqlite3
 from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Self
 
-from flp_rag.contracts import Chunk, Parent
+from flp_rag.contracts import Block, Chunk, Parent
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS parents (
@@ -34,17 +37,55 @@ CREATE TABLE IF NOT EXISTS chunks (
     payload_json TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS chunks_parent_id ON chunks(parent_id);
+CREATE TABLE IF NOT EXISTS blocks (
+    block_id TEXT PRIMARY KEY,
+    parent_id TEXT NOT NULL,
+    chunk_id TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    type TEXT NOT NULL,
+    text TEXT NOT NULL,
+    page_printed INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS blocks_parent_id ON blocks(parent_id);
+CREATE INDEX IF NOT EXISTS blocks_chunk_id ON blocks(chunk_id);
 """
+
+
+@dataclass(frozen=True)
+class StoredBlock:
+    """One clean block as Stage 15 reads it back: typed text with its place in the parent."""
+
+    block_id: str
+    parent_id: str
+    chunk_id: str
+    position: int
+    type: str
+    text: str
+    page_printed: int
+
+
+_BLOCK_COLUMNS = "block_id, parent_id, chunk_id, position, type, text, page_printed"
 
 
 class ParentStore:
     """Open with `with ParentStore(path) as store:`."""
 
-    def __init__(self, path: Path | str) -> None:
+    def __init__(self, path: Path | str, *, readonly: bool = False) -> None:
+        """Writers create the file and the schema. The query side opens read-only: a missing
+        file is an error, not a new empty store, and no DDL runs under the worker pool."""
         self.path = Path(path)
+        if readonly:
+            if not self.path.exists():
+                raise FileNotFoundError(f"parent store {self.path} does not exist; run flp ingest")
+            self._conn = sqlite3.connect(f"file:{self.path}?mode=ro", uri=True)
+            return
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(self.path)
         self._conn.executescript(_SCHEMA)
+
+    @classmethod
+    def open_readonly(cls, path: Path | str) -> Self:
+        return cls(path, readonly=True)
 
     def __enter__(self) -> Self:
         return self
@@ -59,8 +100,15 @@ class ParentStore:
 
     def put_parents(self, parents: Iterable[Parent]) -> int:
         rows = [
-            (p.parent_id, p.chapter_no, p.section_title, p.text, p.page_printed_start,
-             p.page_printed_end, p.token_count)
+            (
+                p.parent_id,
+                p.chapter_no,
+                p.section_title,
+                p.text,
+                p.page_printed_start,
+                p.page_printed_end,
+                p.token_count,
+            )
             for p in parents
         ]
         with self._conn:
@@ -78,7 +126,53 @@ class ParentStore:
             self._conn.executemany("INSERT OR REPLACE INTO chunks VALUES (?, ?, ?, ?)", rows)
         return len(rows)
 
+    def put_blocks(self, blocks: Iterable[Block], chunks: Iterable[Chunk]) -> int:
+        """Store the clean blocks that the chunks list in `payload.block_ids`, in book order.
+        A block that no chunk lists (a chapter title) is not stored."""
+        owner: dict[str, tuple[str, str]] = {}
+        for c in chunks:
+            for bid in c.payload.get("block_ids", []):
+                if str(bid) in owner:
+                    raise ValueError(
+                        f"block {bid} is listed by chunks {owner[str(bid)][1]} and {c.chunk_id}"
+                    )
+                owner[str(bid)] = (c.parent_id, c.chunk_id)
+        ordered = sorted(
+            (b for b in blocks if b.block_id in owner), key=lambda b: (b.page_pdf, b.block_index)
+        )
+        rows = [
+            (
+                b.block_id,
+                owner[b.block_id][0],
+                owner[b.block_id][1],
+                i,
+                b.type,
+                b.text,
+                b.page_printed,
+            )
+            for i, b in enumerate(ordered)
+        ]
+        with self._conn:
+            self._conn.executemany(
+                f"INSERT OR REPLACE INTO blocks ({_BLOCK_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                rows,
+            )
+        return len(rows)
+
     # ---- reads
+
+    def get_blocks(self, parent_id: str) -> list[StoredBlock]:
+        rows = self._conn.execute(
+            f"SELECT {_BLOCK_COLUMNS} FROM blocks WHERE parent_id = ? ORDER BY position",
+            (parent_id,),
+        ).fetchall()
+        return [StoredBlock(*r) for r in rows]
+
+    def get_chunk_blocks(self, chunk_id: str) -> list[StoredBlock]:
+        rows = self._conn.execute(
+            f"SELECT {_BLOCK_COLUMNS} FROM blocks WHERE chunk_id = ? ORDER BY position", (chunk_id,)
+        ).fetchall()
+        return [StoredBlock(*r) for r in rows]
 
     def get_parent(self, parent_id: str) -> Parent | None:
         row = self._conn.execute(
@@ -107,14 +201,18 @@ class ParentStore:
             return None
         payload: dict[str, Any] = json.loads(row[3])
         return Chunk(
-            chunk_id=row[0], parent_id=row[1], display_text=row[2],
-            embedding_text="", token_count=int(payload.get("token_count", 0)), payload=payload,
+            chunk_id=row[0],
+            parent_id=row[1],
+            display_text=row[2],
+            embedding_text="",
+            token_count=int(payload.get("token_count", 0)),
+            payload=payload,
         )
 
     # ---- integrity
 
     def count(self, table: str) -> int:
-        if table not in ("parents", "chunks"):
+        if table not in ("parents", "chunks", "blocks"):
             raise ValueError(f"unknown table {table!r}")
         return int(self._conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
 

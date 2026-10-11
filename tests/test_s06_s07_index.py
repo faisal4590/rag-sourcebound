@@ -440,3 +440,33 @@ def test_index_the_real_book_into_the_live_qdrant(tmp_path: Path) -> None:
         client.delete_collection(result.collection)
     # Every collection that existed before still exists: the test cleaned up only its own.
     assert before <= {c.name for c in client.get_collections().collections}
+
+
+def test_index_stores_the_clean_blocks_of_every_chunk(indexed_dir: Path, fast_settings) -> None:
+    """Stage 15 needs the block boundaries. Given a clean file, the store holds one row per block
+    that a chunk lists in `payload.block_ids`, in book order; chapter titles are not stored."""
+    from flp_rag.contracts import Block
+
+    settings = _fake_dim_settings(fast_settings)
+    chunks = list(read_jsonl(indexed_dir / "enriched" / "d.jsonl", Chunk))
+    blocks: list[Block] = []
+    enriched: list[Chunk] = []
+    for i, c in enumerate(chunks):
+        ids = [f"d:{100 + i:03d}:000", f"d:{100 + i:03d}:001"]
+        blocks.append(Block(ids[0], "paragraph", c.display_text, "P", 5, "C", "S", 100 + i, 98 + i, 0, False))
+        blocks.append(Block(ids[1], "code", "$x = 1;", "P", 5, "C", "S", 100 + i, 98 + i, 1, True))
+        enriched.append(Chunk(c.chunk_id, c.parent_id, c.display_text, c.embedding_text, c.token_count,
+                              {**c.payload, "block_ids": ids}))
+    blocks.append(Block("d:099:000", "chapter_title", "Chapter title", "P", 5, "C", "", 99, 97, 0, False))
+    write_jsonl(indexed_dir / "enriched" / "d.jsonl", enriched)
+    write_jsonl(indexed_dir / "clean" / "d.jsonl", blocks)
+    client = QdrantClient(":memory:")
+    result = s6.index("d", settings, in_dir=indexed_dir / "enriched", vectors_dir=indexed_dir / "vectors",
+                      parents_dir=indexed_dir / "parents", clean_dir=indexed_dir / "clean",
+                      index_dir=indexed_dir / "index", client=client)
+    assert result.blocks_stored == 10
+    with ParentStore(result.store_path) as store:
+        assert store.count("blocks") == 10
+        got = store.get_chunk_blocks(enriched[0].chunk_id)
+        assert [b.type for b in got] == ["paragraph", "code"] and got[1].text == "$x = 1;"
+        assert len(store.get_blocks(enriched[0].parent_id)) == 2 * sum(1 for c in enriched if c.parent_id == enriched[0].parent_id)
