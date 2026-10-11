@@ -200,6 +200,10 @@ class GenConfig(_Section):
     max_output_tokens: int = Field(gt=0)
     prompt_file: Path
     strict_prompt_file: Path
+    repair_prompt_file: Path
+    max_repair_calls: int = Field(ge=0)  # per request, shared by Stages 16 and 17
+    retry_backoff_s: float = Field(ge=0)  # pause before the one retry of a transport error
+    seed: int | None = None  # sent where the provider supports one (OpenAI, Ollama)
 
 
 class OutputConfig(_Section):
