@@ -11,9 +11,8 @@ import structlog
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from pydantic import ValidationError
 from structlog.testing import capture_logs
-from typer.testing import CliRunner
 
-from flp_rag import cli, tracing
+from flp_rag import tracing
 from flp_rag.contracts import Candidate, ContextBlock, Response, Source
 from flp_rag.graph import build, markers
 from flp_rag.graph.nodes import respond as rs
@@ -367,85 +366,6 @@ def test_node_span_attributes_and_stage_timings_in_the_graph(settings) -> None:
     assert a["rag.answer_chars"] == len("Promotion [S1][S3].")
     assert len([e for e in logs if e["event"] == "request"]) == 1
     assert response.debug["gate"]["score_top1"] == 0.7  # from the stub gate
-
-
-# --------------------------------------------------------------------------- CLI view
-
-
-def test_format_response_prints_answer_sources_status_and_trace_id(settings) -> None:
-    r = rs.build_response(answered_state(), settings)
-    text = rs.format_response(r)
-    lines = text.splitlines()
-    assert lines[0] == ANSWER
-    assert "S1 · Chapter 05 Property Promotion · Constructor promotion · p. 63-66" in lines
-    assert "S3 · Chapter 06 Readonly Properties · Readonly · p. 75-77" in lines
-    assert lines[-1] == f"status=answered trace_id={'a' * 32}"
-    abstain = rs.build_response(
-        answered_state(
-            ABSTAIN_TEXT, status="no_information", abstain_reason="gate.low_top_score", sources=[]
-        ),
-        settings,
-    )
-    text = rs.format_response(abstain)
-    assert text.splitlines()[0] == ABSTAIN_TEXT and "S1 ·" not in text
-    assert text.splitlines()[-1].startswith("status=no_information")
-    with_debug = rs.format_response(
-        rs.build_response(answered_state(debug=True), settings), debug=True
-    )
-    assert "uncited_blocks" in with_debug and "timings_ms" in with_debug
-
-
-def test_flp_ask_prints_the_response_record(monkeypatch: pytest.MonkeyPatch, settings) -> None:
-    smalltalk = False
-
-    def fake_graph(deps: build.Deps):
-        nodes = build.default_nodes(deps)
-        stubs = stub_nodes(smalltalk=smalltalk).as_dict()
-
-        def assemble(state: RagState) -> dict[str, Any]:
-            return {"context": BLOCKS, "label_map": LABEL_MAP, "candidates": CANDIDATES}
-
-        def generate(state: RagState) -> dict[str, Any]:
-            return {"answer": "Promotion removes boilerplate [S1].", "prompt_version": "ab12cd34"}
-
-        return build.build_graph(
-            build.GraphNodes(
-                **{**stubs, "assemble": assemble, "generate": generate, "respond": nodes.respond}
-            )
-        )
-
-    from flp_rag.api import app as api_mod
-
-    monkeypatch.setattr(cli, "load_settings", lambda: settings)
-    monkeypatch.setattr(api_mod, "build_deps", lambda s: build.Deps(settings=s))
-    monkeypatch.setattr(build, "compile_default", fake_graph)
-    monkeypatch.setattr(api_mod, "current_index_version", lambda s, d: ("v3-test", "c"))
-    monkeypatch.setattr(cli.tracing, "configure_tracing", lambda s: None)
-    monkeypatch.setattr(cli.tracing, "shutdown_tracing", lambda: None)
-
-    result = CliRunner().invoke(cli.app, ["ask", "What is promotion?"])
-    assert result.exit_code == 0, result.output
-    out = [line for line in result.output.splitlines() if not line.startswith("{")]
-    assert out[0] == "Promotion removes boilerplate [S1]."
-    assert "S1 · Chapter 05 Property Promotion · Constructor promotion · p. 63-66" in out
-    assert out[-1].startswith("status=answered trace_id=")
-
-    smalltalk = True
-    result = CliRunner().invoke(cli.app, ["ask", "hi there", "--debug"])
-    assert result.exit_code == 0, result.output
-    assert ABSTAIN_TEXT in result.output and "query.smalltalk" in result.output
-
-    def broken(s: Settings) -> build.Deps:
-        raise RuntimeError("secret://qdrant-host refused")
-
-    monkeypatch.setattr(api_mod, "build_deps", broken)
-    result = CliRunner().invoke(cli.app, ["ask", "What is promotion?"])
-    assert result.exit_code == 1
-    # The record and the stderr detail show no internals; the JSON ERROR log line holds them.
-    shown = "\n".join(line for line in result.output.splitlines() if not line.startswith("{"))
-    assert settings.api.error_text in shown and "status=error" in shown
-    assert "qdrant-host" not in shown and "see trace" in shown
-    assert any(line.startswith("{") and "qdrant-host" in line for line in result.output.splitlines())
 
 
 def test_timings_of_a_node_that_runs_twice_add_up() -> None:

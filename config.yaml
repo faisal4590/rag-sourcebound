@@ -75,6 +75,10 @@ api:
   health_timeout_s: 2
   error_text: "The request failed. Use the trace ID to report it."   # never the abstain text
 
+cli:
+  api_url: http://localhost:8000     # flp ask: flag --api-url, then FLP_API_URL, then this
+  timeout_s: 25                      # longer than api.timeout_s, so the server's 504 reaches the user
+
 guard:
   max_chars: 2000
   rate_limit_per_min: 30       # Milestone 5, per session_id or IP
