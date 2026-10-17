@@ -21,7 +21,6 @@ deps and graph through `create_app`.
 
 import asyncio
 import contextlib
-import hashlib
 import json
 import time
 from collections.abc import AsyncIterator, Callable
@@ -48,6 +47,7 @@ from flp_rag.api.schemas import (
 )
 from flp_rag.contracts import Response
 from flp_rag.graph.build import Deps, compile_default
+from flp_rag.graph.nodes import generate as gen_mod
 from flp_rag.graph.nodes.guard_input import InputRejected
 from flp_rag.graph.nodes.retrieve import RetrievalFilters
 from flp_rag.graph.state import RagState, initial_state
@@ -73,7 +73,7 @@ GraphFactory = Callable[[Deps], CompiledStateGraph]
 def prompt_version(settings: Settings) -> str:
     """`sha256(prompt file)[:8]` of the answer prompt (spec Stage 16 rule 5)."""
     path = settings.config_path.parent / settings.gen.prompt_file
-    return hashlib.sha256(path.read_bytes()).hexdigest()[:8] if path.exists() else ""
+    return gen_mod.prompt_version(path) if path.exists() else ""
 
 
 def current_index_version(settings: Settings, deps: Deps) -> tuple[str | None, str | None]:

@@ -122,6 +122,10 @@ gen:
   max_output_tokens: 800
   prompt_file: prompts/answer_v1.md
   strict_prompt_file: prompts/answer_strict_v1.md
+  repair_prompt_file: prompts/repair_v1.md   # the note that asks for a rewrite after invalid output
+  max_repair_calls: 1                        # per request, shared by Stages 16 and 17
+  retry_backoff_s: 1.0                       # pause before the one retry of a transport error
+  seed: 42                                   # OpenAI and Ollama take a seed; Anthropic has none
 
 output:
   faithfulness_sample_rate: 0.2

@@ -230,8 +230,10 @@ def test_default_nodes_run_real_retrieval_and_abstain_without_generation(monkeyp
     client = QdrantClient(":memory:")
     indexed = s7.index("d", settings, in_dir=tmp / "enriched", vectors_dir=tmp / "vectors",
                        parents_dir=tmp / "parents", index_dir=tmp / "index", client=client)
+    from tests.test_generate import FakeChat
+
     deps = build.Deps(settings=settings, client=client, embedder=embedder, collection=indexed.collection,
-                      store_path=indexed.store_path)
+                      store_path=indexed.store_path, chat=FakeChat("Readonly is set once [S1]."))
     app = build.compile_default(deps)
 
     # Any question that is not an exact chunk text scores under 0.999, so the gate abstains.
@@ -246,6 +248,7 @@ def test_default_nodes_run_real_retrieval_and_abstain_without_generation(monkeyp
     assert response.status == "no_information" and response.debug["visited"][-1] == "respond"
 
     # The exact text of a chunk scores 1.0 and passes the gate; the pass route runs Stage 15 on
-    # the store (plain text, the fixture has no clean blocks) and hits the Stage 16 placeholder.
-    with pytest.raises(NotImplementedError, match="#21"):
+    # the store (plain text, the fixture has no clean blocks) and Stage 16 on the fake chat, then
+    # hits the Stage 17 placeholder.
+    with pytest.raises(NotImplementedError, match="#22"):
         app.invoke(initial_state(CHUNKS[2].embedding_text, request_id="r2"))

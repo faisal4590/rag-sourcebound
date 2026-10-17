@@ -27,10 +27,11 @@ from qdrant_client import QdrantClient
 from flp_rag.contracts import Candidate, Response
 from flp_rag.graph.nodes import assemble as assemble_mod
 from flp_rag.graph.nodes import gate as gate_mod
+from flp_rag.graph.nodes import generate as gen_mod
 from flp_rag.graph.nodes import guard_input as guard_mod
 from flp_rag.graph.nodes import retrieve as retrieve_mod
 from flp_rag.graph.state import RagState
-from flp_rag.models import Embedder
+from flp_rag.models import ChatModel, Embedder, get_chat_model
 from flp_rag.settings import ABSTAIN_TEXT, Settings
 from flp_rag.stores.embedding_cache import EmbeddingCache
 from flp_rag.tracing import current_span, stage
@@ -141,19 +142,21 @@ class Deps:
     cache: EmbeddingCache | None = None
     collection: str | None = None
     store_path: Path | None = None  # data/index/{index_version}/store.sqlite, for Stage 15
+    chat: ChatModel | None = None  # the answer model; built from gen.model on first use when None
     extra: dict[str, Any] = field(default_factory=dict)
 
 
 def default_nodes(deps: Deps) -> GraphNodes:
     """Milestone 3 skeleton. Real: guard_input (#18), retrieve (dense, #15), gate (#19),
-    assemble (#20). Stubs that later issues replace: understand passthrough (#27),
-    rerank_score = fused_score (#26, so the gate runs on dense cosine until the reranker lands),
-    generate (#21), check_output (#22), respond minimal (#23)."""
+    assemble (#20), generate (#21). Stubs that later issues replace: understand passthrough
+    (#27), rerank_score = fused_score (#26, so the gate runs on dense cosine until the reranker
+    lands), check_output (#22), respond minimal (#23)."""
     s = deps.settings
 
     guard_input = guard_mod.make_guard_input(s)
     gate = gate_mod.make_gate(s)
     assemble = assemble_mod.make_assemble(s, deps.store_path)
+    generate = gen_mod.make_generate(s, lambda: deps.chat or get_chat_model(s, "gen"))
 
     def understand(state: RagState) -> dict[str, Any]:
         from flp_rag.contracts import StandaloneQuery
@@ -200,9 +203,6 @@ def default_nodes(deps: Deps) -> GraphNodes:
         ]
         return {"candidates": stubbed[: s.rerank.top_n]}
 
-    def generate(state: RagState) -> dict[str, Any]:
-        raise NotImplementedError("Stage 16 generation is issue #21")
-
     def check_output(state: RagState) -> dict[str, Any]:
         raise NotImplementedError("Stage 17 output checks is issue #22")
 
@@ -217,7 +217,7 @@ def default_nodes(deps: Deps) -> GraphNodes:
             timings_ms=dict(state.get("timings_ms", {})),
             model={"embed": s.embed.model},
             index_version="",
-            prompt_version="",
+            prompt_version=state.get("prompt_version", ""),
             debug={
                 "visited": [*state.get("visited", []), "respond"],
                 "abstain_reason": state.get("abstain_reason"),

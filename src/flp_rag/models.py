@@ -144,9 +144,16 @@ class ChatModel(Protocol):
         messages: Sequence[Message],
         json_schema: dict[str, Any] | None = None,
         temperature: float = 0,
+        max_tokens: int | None = None,
     ) -> Completion: ...
 
-    def stream(self, system: str, messages: Sequence[Message], temperature: float = 0) -> Iterator[str]: ...
+    def stream(
+        self,
+        system: str,
+        messages: Sequence[Message],
+        temperature: float = 0,
+        max_tokens: int | None = None,
+    ) -> Iterator[str]: ...
 
 
 # --------------------------------------------------------------------------- embedders
@@ -306,8 +313,11 @@ class CohereReranker:
 class LangChainChat:
     """One LangChain chat model behind the `ChatModel` interface."""
 
-    def __init__(self, llm: BaseChatModel, *, model_name: str, price: Price) -> None:
+    def __init__(
+        self, llm: BaseChatModel, *, model_name: str, price: Price, seed: int | None = None
+    ) -> None:
         self.llm, self.model_name, self.price_per_million_tokens = llm, model_name, price
+        self.seed = seed  # sent where the provider supports one (OpenAI, Ollama)
 
     def complete(
         self,
@@ -315,10 +325,11 @@ class LangChainChat:
         messages: Sequence[Message],
         json_schema: dict[str, Any] | None = None,
         temperature: float = 0,
+        max_tokens: int | None = None,
     ) -> Completion:
         prompt = self._messages(system, messages, json_schema)
         started = time.perf_counter()
-        response = self.llm.invoke(prompt, **self.invoke_kwargs(temperature))
+        response = self.llm.invoke(prompt, **self.invoke_kwargs(temperature, max_tokens))
         latency_ms = int((time.perf_counter() - started) * 1000)
         text = _content_text(response)
         parsed = _parse_json(text, json_schema) if json_schema is not None else None
@@ -337,18 +348,37 @@ class LangChainChat:
             json=parsed,
         )
 
-    def stream(self, system: str, messages: Sequence[Message], temperature: float = 0) -> Iterator[str]:
-        for piece in self.llm.stream(self._messages(system, messages, None), **self.invoke_kwargs(temperature)):
+    def stream(
+        self,
+        system: str,
+        messages: Sequence[Message],
+        temperature: float = 0,
+        max_tokens: int | None = None,
+    ) -> Iterator[str]:
+        prompt = self._messages(system, messages, None)
+        for piece in self.llm.stream(prompt, **self.invoke_kwargs(temperature, max_tokens)):
             text = _content_text(piece)
             if text:
                 yield text
 
-    def invoke_kwargs(self, temperature: float) -> dict[str, Any]:
-        """Per-call temperature in the form each client accepts. ChatOllama takes it inside
-        `options`; a top-level `temperature` kwarg reaches the Ollama client and raises."""
-        if type(self.llm).__name__ == "ChatOllama":
-            return {"options": {"temperature": temperature}}
-        return {"temperature": temperature}
+    def invoke_kwargs(self, temperature: float, max_tokens: int | None = None) -> dict[str, Any]:
+        """Per-call settings in the form each client accepts. ChatOllama takes them inside
+        `options` (`num_predict`, `seed`); a top-level kwarg reaches the Ollama client and
+        raises. Anthropic has no seed. OpenAI takes `max_tokens` and `seed`."""
+        kind = type(self.llm).__name__
+        if kind == "ChatOllama":
+            options: dict[str, Any] = {"temperature": temperature}
+            if max_tokens is not None:
+                options["num_predict"] = max_tokens
+            if self.seed is not None:
+                options["seed"] = self.seed
+            return {"options": options}
+        kwargs: dict[str, Any] = {"temperature": temperature}
+        if max_tokens is not None:
+            kwargs["max_tokens"] = max_tokens
+        if self.seed is not None and kind != "ChatAnthropic":
+            kwargs["seed"] = self.seed
+        return kwargs
 
     @staticmethod
     def _messages(
@@ -436,7 +466,8 @@ def get_chat_model(settings: Settings, role: ChatRole, secrets: Secrets | None =
         from langchain_ollama import ChatOllama
 
         llm = ChatOllama(model=name, temperature=0)
-    return LangChainChat(llm, model_name=spec, price=settings.price_for(spec))
+    seed = settings.gen.seed if role == "gen" else None
+    return LangChainChat(llm, model_name=spec, price=settings.price_for(spec), seed=seed)
 
 
 def get_embeddings(settings: Settings, secrets: Secrets | None = None) -> Embedder:

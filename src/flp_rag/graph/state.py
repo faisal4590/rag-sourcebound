@@ -44,6 +44,8 @@ class RagState(TypedDict, total=False):
     context: list[ContextBlock]
     label_map: dict[str, dict[str, Any]]  # label -> chunk ids, chapter, section, pages (Stage 15)
     answer: str
+    prompt_version: str  # sha256(prompt file)[:8] of the prompt that produced the answer
+    repair_calls: int  # model repair calls spent so far (budget gen.max_repair_calls)
     # response (Stage 18)
     status: Status
     abstain_reason: str | None
