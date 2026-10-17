@@ -157,11 +157,12 @@ def test_one_marker_parser_reads_every_accepted_form() -> None:
         "[S1-S9]",
         "[s9]",
         "[S 9]",
-        "[S9 ]",
-        "[ S9]",
         "[S1; S9]",
         "[see S1]",
     ]
+    assert markers.find_markers("[ S1 ] and [S2 ] and [ S3, S4 ]") == ["S1", "S2", "S3", "S4"]
+    assert markers.find_markers("boilerplate【S1】 and 【S2, S3】") == ["S1", "S2", "S3"]
+    assert markers.find_malformed("【S1-S2】 【s1】 【S1】") == ["【S1-S2】", "【s1】"]
     assert markers.find_malformed("[S1][S2, S3] [1] [S] [note]") == []
     # Stage 16 reads markers through the same parser.
     assert gen.classify("Promotion removes boilerplate [S1, S3].") == "answer"

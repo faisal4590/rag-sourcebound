@@ -36,6 +36,7 @@ def test_parse_model_spec_splits_provider_and_name() -> None:
     assert m.parse_model_spec("anthropic:claude-sonnet-5") == ("anthropic", "claude-sonnet-5")
     assert m.parse_model_spec("ollama:llama3.1:8b") == ("ollama", "llama3.1:8b")
     assert m.parse_model_spec("openai:gpt-5-mini") == ("openai", "gpt-5-mini")
+    assert m.parse_model_spec("groq:openai/gpt-oss-120b") == ("groq", "openai/gpt-oss-120b")
 
 
 @pytest.mark.parametrize("spec", ["<generator-model-name>", "<small-model-name>", ""])
@@ -112,6 +113,18 @@ def test_ollama_temperature_goes_inside_options() -> None:
     assert other.invoke_kwargs(0.0) == {"temperature": 0.0}
 
 
+def test_reasoning_effort_reaches_only_the_openai_protocol() -> None:
+    from langchain_ollama import ChatOllama
+    from langchain_openai import ChatOpenAI
+
+    openai = m.LangChainChat(ChatOpenAI(model="openai/gpt-oss-120b", api_key="k"), model_name="groq:x",
+                             price=m.Price(input=0, output=0), reasoning_effort="low")
+    assert openai.invoke_kwargs(0.0, 2000) == {"temperature": 0.0, "max_tokens": 2000, "reasoning_effort": "low"}
+    ollama = m.LangChainChat(ChatOllama(model="llama3.1:8b"), model_name="ollama:llama3.1:8b",
+                             price=m.Price(input=0, output=0), reasoning_effort="low")
+    assert "reasoning_effort" not in str(ollama.invoke_kwargs(0.0))
+
+
 def test_finish_reason_reads_each_provider_key() -> None:
     for meta, expected in (({"stop_reason": "end_turn"}, "end_turn"),
                            ({"finish_reason": "stop"}, "stop"),
@@ -140,6 +153,7 @@ def test_completion_cost_uses_the_price_table() -> None:
 def test_get_chat_model_builds_the_right_client(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic")
     monkeypatch.setenv("OPENAI_API_KEY", "test-openai")
+    monkeypatch.setenv("GROQ_API_KEY", "test-groq")
     settings = load_settings()
 
     def with_models(gen: str, query: str, judge: str):
@@ -160,10 +174,27 @@ def test_get_chat_model_builds_the_right_client(monkeypatch: pytest.MonkeyPatch)
     assert type(judge.llm).__name__ == "ChatOllama"
     assert gen.price_per_million_tokens.output == 15
 
+    # Groq is the OpenAI protocol at another base URL (its own key, never OPENAI_API_KEY).
+    s = with_models("groq:openai/gpt-oss-120b", "groq:openai/gpt-oss-20b", "groq:openai/gpt-oss-20b")
+    gen = m.get_chat_model(s, "gen")
+    assert type(gen.llm).__name__ == "ChatOpenAI" and gen.model_name == "groq:openai/gpt-oss-120b"
+    assert str(gen.llm.openai_api_base).startswith("https://api.groq.com/openai/v1")
+    assert gen.reasoning_effort == s.gen.reasoning_effort
+    assert m.get_chat_model(s, "judge").reasoning_effort == s.output.judge_reasoning_effort
+    monkeypatch.delenv("GROQ_API_KEY")
+    with pytest.raises(m.ModelConfigError, match="GROQ_API_KEY"):
+        m.get_chat_model(s, "gen", m.Secrets(_env_file=None))
 
-def test_get_chat_model_rejects_placeholders_from_shipped_config() -> None:
+
+def test_get_chat_model_rejects_a_placeholder_model_name() -> None:
+    settings = load_settings()
+    prices = {**settings.prices_usd_per_million_tokens, "<generator-model-name>": m.Price(input=0, output=0)}
+    placeholder = settings.model_copy(update={
+        "gen": settings.gen.model_copy(update={"model": "<generator-model-name>"}),
+        "prices_usd_per_million_tokens": prices,
+    })
     with pytest.raises(m.ModelConfigError, match="gen.model"):
-        m.get_chat_model(load_settings(), "gen")
+        m.get_chat_model(placeholder, "gen")
 
 
 def test_secrets_read_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:

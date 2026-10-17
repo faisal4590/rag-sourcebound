@@ -389,6 +389,14 @@ def make_generate(
         if result.abstain_reason:
             span.set_attribute("rag.abstain_reason", result.abstain_reason)
             out["sources"] = []
+        if settings.trace.capture_content and (
+            result.repair_calls or result.abstain_reason == "gen.invalid_output"
+        ):
+            # The text the model wrote instead of an answer, for the runbook (spec 7.11): the
+            # output that the repair replaced, or the last invalid one when the repair failed.
+            failed = result.abstain_reason == "gen.invalid_output"
+            rejected = result.completions[-1] if failed else result.completions[0]
+            span.set_attribute("rag.rejected_answer", rejected.text)
         return out
 
     return generate_node

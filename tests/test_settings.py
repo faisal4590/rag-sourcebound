@@ -139,7 +139,7 @@ def test_every_spec_section_is_typed() -> None:
     assert s.context.max_blocks == 8
     assert s.context.order == "position"
     assert s.gen.temperature == 0
-    assert s.gen.max_output_tokens == 800
+    assert s.gen.max_output_tokens == 2000
     assert s.gen.prompt_file == Path("prompts/answer_v1.md")
     assert s.gen.strict_prompt_file == Path("prompts/answer_strict_v1.md")
     assert s.output.faithfulness_sample_rate == 0.2
@@ -191,7 +191,7 @@ def test_chunk_token_bounds_must_be_ordered(tmp_path: Path) -> None:
 
 def test_configured_models_need_a_price(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="price"):
-        _load(tmp_path, SHIPPED.replace("model: <generator-model-name>", "model: gpt-x"))
+        _load(tmp_path, SHIPPED.replace("model: groq:openai/gpt-oss-120b", "model: openai:gpt-x"))
 
 
 def test_literal_choices_are_enforced(tmp_path: Path) -> None:

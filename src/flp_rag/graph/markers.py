@@ -1,20 +1,22 @@
 # The one [Sn] marker parser that Stages 16, 17, and 18 share. Issue #22, Part 2.
 """Block markers in an answer.
 
-`[S1]` is one marker, `[S1][S3]` two, `[S1, S3]` two (issue #22, open question 3). `(S1)`,
-`Source 1`, and a bare `S1` are no marker. Labels come back in reading order, duplicates kept,
-so a citation count is the length of the list and a set gives the distinct labels.
+`[S1]` is one marker, `[S1][S3]` two, `[S1, S3]` two (issue #22, open question 3). Spaces
+inside the brackets are tolerated (`[ S1 ]`), and so are the fullwidth brackets `【S1】`; gpt-oss
+writes both forms. Stage 18 canonicalizes every form to `[S1]`. `(S1)`, `Source 1`, and a bare `S1` are no marker. Labels come back in reading
+order, duplicates kept, so a citation count is the length of the list and a set gives the
+distinct labels.
 
 A bracket group that looks like a citation but is not one of the accepted forms (`[S1-S9]`,
-`[s9]`, `[S 9]`, `[S9 ]`) is malformed: `find_malformed` returns it so that Stage 17 can reject
+`[s9]`, `[S 9]`) is malformed: `find_malformed` returns it so that Stage 17 can reject
 it instead of letting stray citation text reach the client.
 """
 
 import re
 
-MARKER_GROUP = re.compile(r"\[(S\d+(?:\s*,\s*S\d+)*)\]")
+MARKER_GROUP = re.compile(r"[\[\u3010]\s*(S\d+(?:\s*,\s*S\d+)*)\s*[\]\u3011]")
 LABEL = re.compile(r"S\d+")
-BRACKET_GROUP = re.compile(r"\[[^\[\]]*\]")
+BRACKET_GROUP = re.compile(r"[\[\u3010][^\[\]\u3010\u3011]*[\]\u3011]")
 LOOKS_LIKE_LABEL = re.compile(r"\bS\s*\d", re.IGNORECASE)
 
 

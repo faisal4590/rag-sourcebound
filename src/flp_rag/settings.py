@@ -214,6 +214,7 @@ class GenConfig(_Section):
     max_repair_calls: int = Field(ge=0)  # per request, shared by Stages 16 and 17
     retry_backoff_s: float = Field(ge=0)  # pause before the one retry of a transport error
     seed: int | None = None  # sent where the provider supports one (OpenAI, Ollama)
+    reasoning_effort: Literal["low", "medium", "high"] | None = None  # reasoning models only
 
 
 class OutputConfig(_Section):
@@ -223,6 +224,7 @@ class OutputConfig(_Section):
     judge_prompt_file: Path
     judge_temperature: float = Field(ge=0, le=2)
     judge_max_output_tokens: int = Field(gt=0)
+    judge_reasoning_effort: Literal["low", "medium", "high"] | None = None
     repair_prompt_file: Path  # named failure lines and the rewrite note for a Stage 17 repair
 
 

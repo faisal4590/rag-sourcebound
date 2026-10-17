@@ -158,6 +158,8 @@ def test_labels_are_not_renumbered_and_combined_markers_become_canonical() -> No
         markers.canonical_markers("[S1][S3] and [S2,S4] and [S9]")
         == "[S1][S3] and [S2][S4] and [S9]"
     )
+    assert markers.canonical_markers("state [ S1 ] and [S2 ]") == "state [S1] and [S2]"
+    assert markers.canonical_markers("DTOs【S1】 and 【S2, S3】.") == "DTOs[S1] and [S2][S3]."
     sources = rs.sources_for(answer, LABEL_MAP, CANDIDATES)
     assert [s.label for s in sources] == ["S2", "S4"]
 
@@ -439,8 +441,11 @@ def test_flp_ask_prints_the_response_record(monkeypatch: pytest.MonkeyPatch, set
     monkeypatch.setattr(api_mod, "build_deps", broken)
     result = CliRunner().invoke(cli.app, ["ask", "What is promotion?"])
     assert result.exit_code == 1
-    assert settings.api.error_text in result.output and "status=error" in result.output
-    assert "qdrant-host" not in result.output and "see trace" in result.output
+    # The record and the stderr detail show no internals; the JSON ERROR log line holds them.
+    shown = "\n".join(line for line in result.output.splitlines() if not line.startswith("{"))
+    assert settings.api.error_text in shown and "status=error" in shown
+    assert "qdrant-host" not in shown and "see trace" in shown
+    assert any(line.startswith("{") and "qdrant-host" in line for line in result.output.splitlines())
 
 
 def test_timings_of_a_node_that_runs_twice_add_up() -> None:
