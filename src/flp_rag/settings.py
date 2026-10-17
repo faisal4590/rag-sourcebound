@@ -143,6 +143,11 @@ class ApiConfig(_Section):
         return value
 
 
+class CliConfig(_Section):
+    api_url: str = Field(min_length=1)  # where `flp ask` sends POST /ask; FLP_API_URL overrides
+    timeout_s: float = Field(gt=0)  # client timeout, longer than api.timeout_s (checked below)
+
+
 class GuardConfig(_Section):
     max_chars: int = Field(gt=0)
     rate_limit_per_min: int = Field(gt=0)
@@ -269,6 +274,7 @@ class Settings(_Section):
     index: IndexConfig
     verify: VerifyConfig
     api: ApiConfig
+    cli: CliConfig
     guard: GuardConfig
     query: QueryConfig
     retrieval: RetrievalConfig
@@ -285,6 +291,16 @@ class Settings(_Section):
     config_hash: str = Field(pattern=r"^[0-9a-f]{8}$")
     chunk_config_hash: str = Field(pattern=r"^[0-9a-f]{16}$")
     config_path: Path
+
+    @model_validator(mode="after")
+    def _client_outlives_server(self) -> "Settings":
+        if self.cli.timeout_s <= self.api.timeout_s:
+            raise ValueError(
+                "cli.timeout_s must be longer than api.timeout_s so the server's timeout "
+                "answer, with its trace id, reaches the user; got "
+                f"{self.cli.timeout_s} <= {self.api.timeout_s}"
+            )
+        return self
 
     @model_validator(mode="before")
     @classmethod

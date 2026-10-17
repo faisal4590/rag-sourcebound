@@ -21,7 +21,7 @@ issue #23). No model call.
 5. The debug field only with `debug: true`: the abstain reason, the gate decision with the
    thresholds, the uncited context blocks, the repair count and the failed check, the timings,
    and the path taken.
-6. `format_response` is the CLI view of the same record.
+6. `flp ask` prints the same record from the API's JSON body (issue #24).
 """
 
 from __future__ import annotations
@@ -257,26 +257,6 @@ def summarize(state: Mapping[str, Any], response: Response, settings: Settings) 
 def log_request(summary: RequestSummary) -> None:
     """Exactly one line per request. Never the question or the answer."""
     log.info("request", **summary.to_log())
-
-
-# --------------------------------------------------------------------------- CLI view
-
-
-def format_response(response: Response, *, debug: bool = False) -> str:
-    """The same record as text: the answer, one line per source, the footer, the debug field."""
-    lines = [response.answer]
-    for s in response.sources:
-        pages = f"p. {s.page_printed_start}" + (
-            f"-{s.page_printed_end}" if s.page_printed_end != s.page_printed_start else ""
-        )
-        where = f"Chapter {s.chapter_no:02d} {s.chapter_title}"
-        lines.append(f"{s.label} · {where} · {s.section_title} · {pages}")
-    if debug and response.debug is not None:
-        import json
-
-        lines.append(json.dumps(response.debug, indent=2, ensure_ascii=False, default=str))
-    lines.append(f"status={response.status} trace_id={response.trace_id}")
-    return "\n".join(lines)
 
 
 # --------------------------------------------------------------------------- node

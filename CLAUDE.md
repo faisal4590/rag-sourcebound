@@ -16,7 +16,7 @@ Purpose, Input and output, Rules, Configuration, Trace span, Done when.
 `ingest/`; `make ingest` verifies and switches the alias. Query side: `graph/state.py` (`RagState`,
 `initial_state`), `graph/build.py` (`build_graph`, `GraphNodes`, `Deps`, `default_nodes`,
 `compile_default`; every node runs under its spec span, routing after `understand` and `gate`),
-Stage 12 dense retrieval in `graph/nodes/retrieve.py`, `flp ask` (retrieval only), and the
+Stage 12 dense retrieval in `graph/nodes/retrieve.py`, `flp retrieve` (retrieval only), and the
 Stage 9 FastAPI app in `api/app.py` (`create_app`, `POST /ask` with SSE, `POST /feedback` stub,
 `GET /health`; `make serve` runs it on :8000). Every response carries `trace_id` and the
 `X-Trace-Id` header; a middleware opens `rag.request` per request, unhandled errors answer 500
@@ -87,8 +87,13 @@ graph wrapper (`timings_ms` per span name, merge reducer), token totals from the
 model-calling nodes (`input_tokens`, `output_tokens`), `index_version` and `started_at` from
 Stage 9 through `initial_state`. The debug field (only with `debug: true`) holds the reason,
 the gate score and thresholds, the uncited blocks, repair count, failed check, timings, and the
-path. `flp ask` runs the whole graph and prints `format_response`; `flp retrieve` keeps the
-Milestone 2 chunk listing. Default nodes still stubbed and named by issue: understand
+path. `flp ask` is a thin client of the API (issue #24): it posts to `POST /ask` at `--api-url`,
+then `FLP_API_URL`, then `cli.api_url`, with `cli.timeout_s` (must exceed `api.timeout_s`),
+renders the JSON record (answer, sources table with label, chapter, section, printed pages,
+score, the debug field with `--debug`, `trace_id=` last), and exits 0 answered, 2 no
+information, 1 error or no API; `--stream` reads the SSE events and prints a withdrawn note
+when `done` is not answered; `--json` prints the raw record; `--retrieve-only` runs
+`flp retrieve`, the Milestone 2 chunk listing. Default nodes still stubbed and named by issue: understand
 passthrough (#27), rerank_score = fused_score (#26).
 `trace.instrument_langchain` (default false) adds OpenInference LangChain spans to the same
 provider. `EmbeddingCache` is thread-safe (LangGraph runs sync nodes in a worker pool).
@@ -151,7 +156,8 @@ make eval                    # flp eval -> harness, compares eval/baseline.json,
 make calibrate               # flp calibrate -> threshold sweep, spec 8.4
 ruff check src tests eval    # lint, line length 100, py312
 pytest tests/test_s04_chunk.py -q   # one stage's test
-flp ask "What is a readonly property?"      # the whole graph; flp retrieve lists chunks only
+flp ask "What is a readonly property?"      # through the API (make serve first); exit 0/2/1
+flp retrieve "readonly"                      # local chunk listing, no model
 ```
 
 Python 3.12 required. `uv` is installed at `~/.local/bin/uv`. Docker is **not** installed on the dev
@@ -189,7 +195,7 @@ so one stage can be rerun without the PDF.
 **Shared:** `contracts.py` (dataclasses from spec Section 10, each with `to_attrs()`),
 `settings.py` (loads `config.yaml`, computes `config_hash`), `models.py` (the only file that names a
 model provider: `get_chat_model()`, `get_embeddings()`, `get_reranker()`), `stores/` (SQLite
-embedding cache and parent store), `cli.py` (Typer: `flp ask|ingest|eval|calibrate`).
+embedding cache and parent store), `cli.py` (Typer: `flp ask|retrieve|ingest|eval|calibrate`).
 
 ### Spec vs scaffold divergences
 
