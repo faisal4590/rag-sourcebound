@@ -364,6 +364,15 @@ def test_node_writes_the_llm_span_and_the_state(settings) -> None:
     assert state["cost_usd"] == pytest.approx(a["rag.cost_usd"])
 
 
+def test_invalid_output_text_is_kept_on_the_span(settings) -> None:
+    _, spans = run_graph(settings, FakeChat("no marker at all", "still no marker"))
+    a = spans["llm.generate"]
+    assert a["rag.abstain_reason"] == "gen.invalid_output"
+    assert a["rag.rejected_answer"] == "still no marker"
+    _, spans = run_graph(settings, FakeChat("no marker at all", ANSWER))
+    assert spans["llm.generate"]["rag.rejected_answer"] == "no marker at all"
+
+
 def test_node_abstain_reaches_respond_with_the_reason(settings) -> None:
     state, spans = run_graph(settings, FakeChat(ABSTAIN_TEXT), debug=True)
     assert state["answer"] == ABSTAIN_TEXT and state["status"] == "no_information"
@@ -375,7 +384,16 @@ def test_node_abstain_reaches_respond_with_the_reason(settings) -> None:
 
 
 def test_node_without_a_configured_model_names_the_config_key(settings) -> None:
-    nodes = build.default_nodes(build.Deps(settings=settings))
+    from flp_rag.models import Price
+
+    placeholder = settings.model_copy(update={
+        "gen": settings.gen.model_copy(update={"model": "<generator-model-name>"}),
+        "prices_usd_per_million_tokens": {
+            **settings.prices_usd_per_million_tokens,
+            "<generator-model-name>": Price(input=0, output=0),
+        },
+    })
+    nodes = build.default_nodes(build.Deps(settings=placeholder))
     state = initial_state("q", request_id="r1")
     state["context"] = BLOCKS
     from flp_rag.models import ModelConfigError

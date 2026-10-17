@@ -94,7 +94,7 @@ query:
   smalltalk_policy: abstain      # abstain | greet
   decompose: false
   hyde: false
-  model: <small-model-name>
+  model: groq:openai/gpt-oss-20b        # Stage 11 rewrite and classify (Milestone 4); Groq free tier
 
 retrieval:
   top_k_dense: 30
@@ -118,23 +118,25 @@ context:
   order: position                # sandwich is the Milestone 7 experiment
 
 gen:
-  model: <generator-model-name>
+  model: groq:openai/gpt-oss-120b     # Groq free tier; set a hosted provider:model for production
   temperature: 0
-  max_output_tokens: 800
+  max_output_tokens: 2000                    # a reasoning model's thinking counts toward this limit
   prompt_file: prompts/answer_v1.md
   strict_prompt_file: prompts/answer_strict_v1.md
   repair_prompt_file: prompts/repair_v1.md   # the note that asks for a rewrite after invalid output
   max_repair_calls: 1                        # per request, shared by Stages 16 and 17
   retry_backoff_s: 1.0                       # pause before the one retry of a transport error
   seed: 42                                   # OpenAI and Ollama take a seed; Anthropic has none
+  reasoning_effort: low                      # reasoning models (gpt-oss) only; others ignore it
 
 output:
   faithfulness_sample_rate: 0.2             # share of non-borderline answers the judge reads; borderline is always 1.0
   code_verbatim: true
-  judge_model: <small-model-name>
+  judge_model: groq:openai/gpt-oss-20b
   judge_prompt_file: prompts/judge_faithfulness_v1.md
   judge_temperature: 0
-  judge_max_output_tokens: 400              # the verdict is about 100 tokens of JSON
+  judge_max_output_tokens: 1200             # the verdict is about 100 tokens of JSON, plus thinking
+  judge_reasoning_effort: low
   repair_prompt_file: prompts/repair_output_v1.md   # the lines that name a failed check, plus the rewrite note
 
 feedback:
@@ -155,5 +157,5 @@ trace:
   instrument_langchain: false    # extra LangChain/LangGraph spans from OpenInference; our @stage spans are the contract
 
 prices_usd_per_million_tokens:
-  <generator-model-name>: { input: 0.0, output: 0.0 }
-  <small-model-name>: { input: 0.0, output: 0.0 }
+  groq:openai/gpt-oss-120b: { input: 0.0, output: 0.0 }   # free tier; rag.cost_usd stays 0
+  groq:openai/gpt-oss-20b: { input: 0.0, output: 0.0 }

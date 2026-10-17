@@ -36,7 +36,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from flp_rag.settings import Price, Settings
 
 ChatRole = Literal["gen", "query", "judge"]
-PROVIDERS = ("anthropic", "openai", "ollama")
+PROVIDERS = ("anthropic", "openai", "groq", "ollama")
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"  # Groq speaks the OpenAI chat protocol
 
 _PLACEHOLDER = re.compile(r"^\s*<.*>\s*$")
 _JSON_FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
@@ -64,6 +65,8 @@ class Secrets(BaseSettings):
 
     anthropic_api_key: SecretStr | None = None
     openai_api_key: SecretStr | None = None
+    groq_api_key: SecretStr | None = None
+    groq_base_url: str = GROQ_BASE_URL
     cohere_api_key: SecretStr | None = None
 
     def require(self, name: str) -> str:
@@ -314,10 +317,17 @@ class LangChainChat:
     """One LangChain chat model behind the `ChatModel` interface."""
 
     def __init__(
-        self, llm: BaseChatModel, *, model_name: str, price: Price, seed: int | None = None
+        self,
+        llm: BaseChatModel,
+        *,
+        model_name: str,
+        price: Price,
+        seed: int | None = None,
+        reasoning_effort: str | None = None,
     ) -> None:
         self.llm, self.model_name, self.price_per_million_tokens = llm, model_name, price
         self.seed = seed  # sent where the provider supports one (OpenAI, Ollama)
+        self.reasoning_effort = reasoning_effort  # OpenAI protocol reasoning models (gpt-oss)
 
     def complete(
         self,
@@ -378,6 +388,8 @@ class LangChainChat:
             kwargs["max_tokens"] = max_tokens
         if self.seed is not None and kind != "ChatAnthropic":
             kwargs["seed"] = self.seed
+        if self.reasoning_effort is not None and kind == "ChatOpenAI":
+            kwargs["reasoning_effort"] = self.reasoning_effort
         return kwargs
 
     @staticmethod
@@ -462,12 +474,28 @@ def get_chat_model(settings: Settings, role: ChatRole, secrets: Secrets | None =
         from langchain_openai import ChatOpenAI
 
         llm = ChatOpenAI(model=name, api_key=secrets.require("openai_api_key"), temperature=0)
+    elif provider == "groq":
+        from langchain_openai import ChatOpenAI
+
+        llm = ChatOpenAI(
+            model=name,
+            api_key=secrets.require("groq_api_key"),
+            base_url=secrets.groq_base_url,
+            temperature=0,
+        )
     else:
         from langchain_ollama import ChatOllama
 
         llm = ChatOllama(model=name, temperature=0)
     seed = settings.gen.seed if role == "gen" else None
-    return LangChainChat(llm, model_name=spec, price=settings.price_for(spec), seed=seed)
+    effort = {
+        "gen": settings.gen.reasoning_effort,
+        "judge": settings.output.judge_reasoning_effort,
+        "query": None,
+    }[role]
+    return LangChainChat(
+        llm, model_name=spec, price=settings.price_for(spec), seed=seed, reasoning_effort=effort
+    )
 
 
 def get_embeddings(settings: Settings, secrets: Secrets | None = None) -> Embedder:

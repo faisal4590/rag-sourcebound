@@ -491,11 +491,14 @@ def make_check_output(
             if replaced:
                 out["rejected_answer"] = answer
         if state.get("debug"):
+            earlier = state.get("debug_info", {}).get("check_output", {})
             out["debug_info"] = {
                 **state.get("debug_info", {}),
                 "check_output": {
                     "result": outcome.result,
                     "failed_check": outcome.failure,
+                    # the check that sent the first answer back, kept across the repair pass
+                    "first_failed_check": earlier.get("first_failed_check") or outcome.failure,
                     "sampled": outcome.sampled,
                     "faithful": outcome.verdict.supported if outcome.verdict else None,
                     "judge_error": outcome.judge_error,

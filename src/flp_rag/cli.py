@@ -6,6 +6,7 @@ import uuid
 from pathlib import Path
 from typing import Annotated
 
+import structlog
 import typer
 
 from flp_rag import tracing
@@ -79,6 +80,10 @@ def ask(
             _, detail = api_mod.error_status(exc, trace_id)
             span.record_exception(exc)
             span.set_attribute("rag.status", "error")
+            # The one ERROR line with the real message (spec 7.8 rule 5); the user sees `detail`.
+            structlog.get_logger().error(
+                "request failed", error=f"{type(exc).__name__}: {exc}", trace_id=trace_id
+            )
             response = respond_mod.build_response(
                 state, settings, error=f"{type(exc).__name__}: {detail}"
             )
