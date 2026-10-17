@@ -63,7 +63,7 @@ from flp_rag.ingest.s06_s07_index import (
     alias_target,
     qdrant_client,
 )
-from flp_rag.models import get_embeddings, get_sparse_embeddings
+from flp_rag.models import get_embeddings, get_reranker, get_sparse_embeddings
 from flp_rag.settings import Settings, load_settings
 from flp_rag.stores.embedding_cache import EmbeddingCache
 
@@ -123,6 +123,7 @@ def build_deps(settings: Settings) -> Deps:
         client=qdrant_client(settings),
         embedder=get_embeddings(settings),
         sparse=get_sparse_embeddings(settings),
+        reranker=get_reranker(settings),
         cache=cache,
     )
 
@@ -143,6 +144,15 @@ def create_app(
             tracing.configure_tracing(settings)
         owns_deps = deps is None
         d = deps or build_deps(settings)
+        if owns_deps and d.reranker is not None:
+            # Load the cross-encoder now, not on the first request. A model that cannot load
+            # stops the API with an error that names it (issue #26, Part 6).
+            try:
+                d.reranker.warm_up()
+            except Exception as exc:
+                log.error("reranker failed to load", model=d.reranker.model_name, error=str(exc))
+                raise
+            log.info("reranker ready", model=d.reranker.model_name, device=d.reranker.device)
         version, collection = current_index_version(settings, d)
         if version is not None and d.store_path is None:
             d.store_path = default_index_dir(settings) / version / STORE_FILE
