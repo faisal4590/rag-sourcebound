@@ -244,7 +244,8 @@ class StandaloneQuery:
     intent: str
     wants_code: bool
     chapter_hint: int | None
-    variants: list[str] = field(default_factory=list)
+    variants: list[str] = field(default_factory=list)  # the standalone question, then paraphrases
+    keyword_variant: str | None = None  # the nouns and PHP keywords, for the sparse retriever only
 
     def to_attrs(self) -> Attrs:
         return _attrs(
@@ -254,7 +255,8 @@ class StandaloneQuery:
             wants_code=self.wants_code,
             chapter_hint=self.chapter_hint,
             variants=self.variants,
-            n_variants=len(self.variants),
+            keyword_variant=self.keyword_variant,
+            n_variants=len(self.variants) + (1 if self.keyword_variant else 0),
         )
 
 
@@ -265,8 +267,9 @@ class Candidate:
     chunk_id: str
     fused_score: float
     rerank_score: float | None
-    provenance: list[str] = field(default_factory=list)
+    provenance: list[str] = field(default_factory=list)  # "dense:v0:r3", "code_group"
     payload: dict[str, Any] = field(default_factory=dict)
+    scores: dict[str, float] = field(default_factory=dict)  # best raw score per retriever
 
     def to_attrs(self) -> Attrs:
         return _attrs(
@@ -274,6 +277,7 @@ class Candidate:
             fused_score=self.fused_score,
             rerank_score=self.rerank_score,
             provenance=self.provenance,
+            scores_all=self.scores or None,
             chapter_no=self.payload.get("chapter_no"),
         )
 

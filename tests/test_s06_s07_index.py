@@ -58,6 +58,10 @@ class FakeEmbedder:
             out.append([x / norm * 3.0 for x in raw])  # not unit length on purpose
         return out
 
+    def embed_queries(self, texts: Sequence[str]) -> list[list[float]]:
+        self.query_batches = [*getattr(self, "query_batches", []), list(texts)]
+        return self.embed_passages(texts)
+
     def embed_query(self, text: str) -> list[float]:
         return self.embed_passages([text])[0]
 

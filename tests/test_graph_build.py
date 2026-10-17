@@ -245,8 +245,9 @@ def test_default_nodes_run_real_retrieval_and_abstain_without_generation(monkeyp
     # Any question that is not an exact chunk text scores under 0.999, so the gate abstains.
     state = app.invoke(initial_state("completely unrelated question about cooking", request_id="r1", debug=True))
     assert state["visited"] == ["guard_input", "understand", "retrieve", "rerank", "gate", "respond"]
-    # The stub rerank clamps the cosine into 0..1 (a fake cosine can be negative).
-    assert state["candidates"] and all(c.rerank_score == min(1.0, max(0.0, c.fused_score)) for c in state["candidates"])
+    # The stub rerank clamps the best dense cosine into 0..1 (a fake cosine can be negative).
+    assert state["candidates"] and all(
+        c.rerank_score == min(1.0, max(0.0, c.scores.get("dense", 0.0))) for c in state["candidates"])
     assert len(state["candidates"]) <= settings.rerank.top_n
     assert state["status"] == "no_information" and state["answer"] == ABSTAIN_TEXT
     assert state["abstain_reason"].startswith("gate.")
