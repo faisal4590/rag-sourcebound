@@ -110,6 +110,9 @@ rerank:
   model: BAAI/bge-reranker-v2-m3
   top_n: 8
   batch_size: 16
+  max_length: 1024               # reranker tokens per pair; no chunk of this book is cut (issue #26)
+  device: auto                   # cuda, then mps, then cpu
+  hint_margin: 0.01              # two neighbors closer than this may swap on the chapter hint
 
 gate:
   tau_low: 0.20                  # recalibrate with Section 8.4

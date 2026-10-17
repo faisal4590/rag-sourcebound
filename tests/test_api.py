@@ -299,6 +299,47 @@ def test_stream_abstain_sends_only_done(tmp_path: Path, exporter: InMemorySpanEx
     )
 
 
+# --------------------------------------------------------------------------- startup
+
+
+def test_startup_warms_the_reranker_and_a_load_failure_stops_the_api(
+    tmp_path: Path, exporter: InMemorySpanExporter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When the app owns its deps, the cross-encoder loads at start (issue #26, Part 5)."""
+
+    class Warmable:
+        model_name, device = "fake/reranker", "cpu"
+
+        def __init__(self, fail: bool = False) -> None:
+            self.fail, self.warmed = fail, 0
+
+        def warm_up(self) -> None:
+            self.warmed += 1
+            if self.fail:
+                raise RuntimeError("no weights for fake/reranker")
+
+        def score(self, query, texts):  # type: ignore[no-untyped-def]
+            return [0.5 for _ in texts]
+
+        def truncated_pairs(self, query, texts):  # type: ignore[no-untyped-def]
+            return 0
+
+    settings = load_settings()
+    client = QdrantClient(":memory:")
+    warm = Warmable()
+    monkeypatch.setattr(api, "build_deps", lambda s: build.Deps(settings=s, client=client, reranker=warm))
+    app = api.create_app(settings, graph_factory=_stub_graph_factory(), configure_tracing=False)
+    with TestClient(app, raise_server_exceptions=False):
+        pass
+    assert warm.warmed == 1
+
+    broken = Warmable(fail=True)
+    monkeypatch.setattr(api, "build_deps", lambda s: build.Deps(settings=s, client=client, reranker=broken))
+    app = api.create_app(settings, graph_factory=_stub_graph_factory(), configure_tracing=False)
+    with pytest.raises(RuntimeError, match="fake/reranker"), TestClient(app):
+        pass
+
+
 # --------------------------------------------------------------------------- /feedback and /health
 
 

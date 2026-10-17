@@ -186,6 +186,9 @@ class RerankConfig(_Section):
     model: str
     top_n: int = Field(gt=0)
     batch_size: int = Field(gt=0)
+    max_length: int = Field(gt=0)  # tokens of the reranker's tokenizer per pair; longer is cut
+    device: Literal["auto", "cpu", "cuda", "mps"] = "auto"
+    hint_margin: float = Field(ge=0, le=1)  # neighbors closer than this may swap on chapter_hint
 
 
 class GateConfig(_Section):
