@@ -38,7 +38,7 @@ class FeedbackRequest(BaseModel):
 
 class SourceOut(BaseModel):
     label: str
-    chunk_id: str
+    chunk_ids: list[str]
     chapter_no: int
     chapter_title: str
     section_title: str
@@ -57,10 +57,11 @@ class AskResponse(BaseModel):
     index_version: str
     prompt_version: str
     debug: dict[str, Any] | None = None
+    detail: str | None = None  # status `error` only: what went wrong, never internals
 
     @classmethod
     def from_contract(
-        cls, r: Response, *, index_version: str, prompt_version: str
+        cls, r: Response, *, index_version: str, prompt_version: str, detail: str | None = None
     ) -> "AskResponse":
         return cls(
             answer=r.answer,
@@ -72,6 +73,7 @@ class AskResponse(BaseModel):
             index_version=r.index_version or index_version,
             prompt_version=r.prompt_version or prompt_version,
             debug=r.debug,
+            detail=detail,
         )
 
 

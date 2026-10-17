@@ -2,8 +2,8 @@
 """The query graph.
 
     guard_input -> understand -> retrieve -> rerank -> gate -> assemble -> generate -> check_output
-                        |                                 |                     ^            |
-                        +-> respond (smalltalk)           +-> respond (abstain) +-- (repair) -+-> respond
+                        |                                 |                     ^           |
+                        +-> respond (smalltalk)           +-> respond (abstain) +- (repair) +-> respond
 
 Each node is a plain function `RagState -> partial state`. `build_graph` wraps every node in
 one `@stage` span with the name from spec Section 7.4, so the nodes themselves stay free of
@@ -15,6 +15,7 @@ implementations that exist and marks the rest as Milestone 3 placeholders by iss
 """
 
 import inspect
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -24,18 +25,19 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from qdrant_client import QdrantClient
 
-from flp_rag.contracts import Candidate, Response
+from flp_rag.contracts import Candidate
 from flp_rag.graph.nodes import assemble as assemble_mod
 from flp_rag.graph.nodes import check_output as check_mod
 from flp_rag.graph.nodes import gate as gate_mod
 from flp_rag.graph.nodes import generate as gen_mod
 from flp_rag.graph.nodes import guard_input as guard_mod
+from flp_rag.graph.nodes import respond as respond_mod
 from flp_rag.graph.nodes import retrieve as retrieve_mod
 from flp_rag.graph.state import RagState
 from flp_rag.models import ChatModel, Embedder, get_chat_model
-from flp_rag.settings import ABSTAIN_TEXT, Settings
+from flp_rag.settings import Settings
 from flp_rag.stores.embedding_cache import EmbeddingCache
-from flp_rag.tracing import current_span, stage
+from flp_rag.tracing import stage
 
 Node = Callable[[RagState], dict[str, Any]]
 
@@ -93,22 +95,29 @@ def route_after_check(state: RagState) -> str:
 
 
 def _traced(name: str, fn: Node) -> Node:
-    """One spec span around a node. Sync and async nodes both work; Stage 16 streams async."""
+    """One spec span around a node. Sync and async nodes both work; Stage 16 streams async.
+    Each node's duration goes into `timings_ms` under its span name, so Stage 18 reads the
+    timings from the state and never from the trace backend."""
     span_name, kind = SPANS[name]
+
+    def finish(update: dict[str, Any] | None, started: float) -> dict[str, Any]:
+        elapsed = int((time.perf_counter() - started) * 1000)
+        return {**(update or {}), "visited": [name], "timings_ms": {span_name: elapsed}}
+
     if inspect.iscoroutinefunction(fn):
 
         @stage(span_name, kind=kind)  # type: ignore[arg-type]
         async def async_node(state: RagState) -> dict[str, Any]:
-            update = await fn(state) or {}
-            return {**update, "visited": [name]}
+            started = time.perf_counter()
+            return finish(await fn(state), started)
 
         async_node.__name__ = name
         return async_node
 
     @stage(span_name, kind=kind)  # type: ignore[arg-type]
     def node(state: RagState) -> dict[str, Any]:
-        update = fn(state) or {}
-        return {**update, "visited": [name]}
+        started = time.perf_counter()
+        return finish(fn(state), started)
 
     node.__name__ = name
     return node
@@ -157,10 +166,10 @@ class Deps:
 
 
 def default_nodes(deps: Deps) -> GraphNodes:
-    """Milestone 3 skeleton. Real: guard_input (#18), retrieve (dense, #15), gate (#19),
-    assemble (#20), generate (#21), check_output (#22). Stubs that later issues replace:
-    understand passthrough (#27), rerank_score = fused_score (#26, so the gate runs on dense
-    cosine until the reranker lands), respond minimal (#23)."""
+    """Milestone 3 graph. Real: guard_input (#18), retrieve (dense, #15), gate (#19),
+    assemble (#20), generate (#21), check_output (#22), respond (#23). Stubs that Milestone 4
+    replaces: understand passthrough (#27), rerank_score = fused_score (#26, so the gate runs
+    on dense cosine until the reranker lands)."""
     s = deps.settings
 
     guard_input = guard_mod.make_guard_input(s)
@@ -170,6 +179,7 @@ def default_nodes(deps: Deps) -> GraphNodes:
     check_output = check_mod.make_check_output(
         s, lambda: deps.judge or get_chat_model(s, "judge")
     )
+    respond = respond_mod.make_respond(s)
 
     def understand(state: RagState) -> dict[str, Any]:
         from flp_rag.contracts import StandaloneQuery
@@ -215,32 +225,6 @@ def default_nodes(deps: Deps) -> GraphNodes:
             for c in state.get("candidates", [])
         ]
         return {"candidates": stubbed[: s.rerank.top_n]}
-
-    def respond(state: RagState) -> dict[str, Any]:
-        status = state.get("status") or ("answered" if state.get("answer") else "error")
-        answer = state.get("answer") or ABSTAIN_TEXT
-        response = Response(
-            answer=answer,
-            status=status,
-            sources=list(state.get("sources", [])),  # type: ignore[arg-type]
-            trace_id=state.get("trace_id", ""),
-            timings_ms=dict(state.get("timings_ms", {})),
-            model={"embed": s.embed.model},
-            index_version="",
-            prompt_version=state.get("prompt_version", ""),
-            debug={
-                "visited": [*state.get("visited", []), "respond"],
-                "abstain_reason": state.get("abstain_reason"),
-                **state.get("debug_info", {}),
-            }
-            if state.get("debug")
-            else None,
-        )
-        span = current_span()
-        span.set_attribute("rag.status", status)
-        span.set_attribute("rag.n_sources", len(response.sources))
-        span.set_attribute("rag.answer_chars", len(answer))
-        return {"status": status, "answer": answer, "response": response}
 
     return GraphNodes(
         guard_input, understand, retrieve, rerank, gate, assemble, generate, check_output, respond

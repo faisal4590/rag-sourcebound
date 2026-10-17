@@ -29,6 +29,13 @@ def has_marker(text: str) -> bool:
     return MARKER_GROUP.search(text) is not None
 
 
+def canonical_markers(text: str) -> str:
+    """`[S1, S3]` -> `[S1][S3]`, so clients parse one form (Stage 18)."""
+    return MARKER_GROUP.sub(
+        lambda m: "".join(f"[{label}]" for label in LABEL.findall(m.group(1))), text
+    )
+
+
 def find_malformed(text: str) -> list[str]:
     """Bracket groups that hold something like a label but are not an accepted marker."""
     return [

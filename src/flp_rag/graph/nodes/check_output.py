@@ -476,6 +476,10 @@ def make_check_output(
             "check_result": outcome.result,
             "cost_usd": float(state.get("cost_usd", 0.0)) + outcome.cost_usd,
         }
+        if outcome.verdict is not None:  # the judge's tokens count toward the request totals
+            c = outcome.verdict.completion
+            out["input_tokens"] = int(state.get("input_tokens", 0)) + c.input_tokens
+            out["output_tokens"] = int(state.get("output_tokens", 0)) + c.output_tokens
         if outcome.result == "ok":
             out |= {"status": "answered", "answer": outcome.answer, "repair_failure": None}
         elif outcome.result == "repair":

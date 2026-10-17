@@ -305,10 +305,11 @@ class ContextBlock:
 
 @dataclass(frozen=True)
 class Source:
-    """Stage 18. One cited source with printed pages."""
+    """Stage 18. One cited source with printed pages. A block can hold several chunks, so the
+    source lists every chunk id of the block (issue #23, open question 1)."""
 
     label: str
-    chunk_id: str
+    chunk_ids: list[str]
     chapter_no: int
     chapter_title: str
     section_title: str
@@ -319,7 +320,7 @@ class Source:
     def to_attrs(self) -> Attrs:
         return _attrs(
             label=self.label,
-            chunk_id=self.chunk_id,
+            chunk_ids=self.chunk_ids,
             chapter_no=self.chapter_no,
             chapter_title=self.chapter_title,
             section_title=self.section_title,
