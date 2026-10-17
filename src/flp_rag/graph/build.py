@@ -1,9 +1,9 @@
 # StateGraph wiring for Stages 9-18. The gate node returns "pass" or "abstain" as a conditional edge. compile() lives here.
 """The query graph.
 
-    guard_input -> understand -> retrieve -> rerank -> gate -+-> assemble -> generate -> check_output -> respond
-                        |                                     +-> respond (abstain)
-                        +-> respond (smalltalk)
+    guard_input -> understand -> retrieve -> rerank -> gate -> assemble -> generate -> check_output
+                        |                                 |                     ^            |
+                        +-> respond (smalltalk)           +-> respond (abstain) +-- (repair) -+-> respond
 
 Each node is a plain function `RagState -> partial state`. `build_graph` wraps every node in
 one `@stage` span with the name from spec Section 7.4, so the nodes themselves stay free of
@@ -26,6 +26,7 @@ from qdrant_client import QdrantClient
 
 from flp_rag.contracts import Candidate, Response
 from flp_rag.graph.nodes import assemble as assemble_mod
+from flp_rag.graph.nodes import check_output as check_mod
 from flp_rag.graph.nodes import gate as gate_mod
 from flp_rag.graph.nodes import generate as gen_mod
 from flp_rag.graph.nodes import guard_input as guard_mod
@@ -82,6 +83,12 @@ def route_after_gate(state: RagState) -> str:
     return "assemble" if state.get("gate_decision") == "pass" else "respond"
 
 
+def route_after_check(state: RagState) -> str:
+    """`repair` goes back to Stage 16 once (the shared budget makes the loop finite); `ok` and
+    `abstain` go to the response."""
+    return "generate" if state["check_result"] == "repair" else "respond"
+
+
 # --------------------------------------------------------------------------- build
 
 
@@ -124,7 +131,9 @@ def build_graph(nodes: GraphNodes) -> CompiledStateGraph:
     )
     graph.add_edge("assemble", "generate")
     graph.add_edge("generate", "check_output")
-    graph.add_edge("check_output", "respond")
+    graph.add_conditional_edges(
+        "check_output", route_after_check, {"generate": "generate", "respond": "respond"}
+    )
     graph.add_edge("respond", END)
     return graph.compile()
 
@@ -143,20 +152,24 @@ class Deps:
     collection: str | None = None
     store_path: Path | None = None  # data/index/{index_version}/store.sqlite, for Stage 15
     chat: ChatModel | None = None  # the answer model; built from gen.model on first use when None
+    judge: ChatModel | None = None  # the faithfulness judge; from output.judge_model when None
     extra: dict[str, Any] = field(default_factory=dict)
 
 
 def default_nodes(deps: Deps) -> GraphNodes:
     """Milestone 3 skeleton. Real: guard_input (#18), retrieve (dense, #15), gate (#19),
-    assemble (#20), generate (#21). Stubs that later issues replace: understand passthrough
-    (#27), rerank_score = fused_score (#26, so the gate runs on dense cosine until the reranker
-    lands), check_output (#22), respond minimal (#23)."""
+    assemble (#20), generate (#21), check_output (#22). Stubs that later issues replace:
+    understand passthrough (#27), rerank_score = fused_score (#26, so the gate runs on dense
+    cosine until the reranker lands), respond minimal (#23)."""
     s = deps.settings
 
     guard_input = guard_mod.make_guard_input(s)
     gate = gate_mod.make_gate(s)
     assemble = assemble_mod.make_assemble(s, deps.store_path)
     generate = gen_mod.make_generate(s, lambda: deps.chat or get_chat_model(s, "gen"))
+    check_output = check_mod.make_check_output(
+        s, lambda: deps.judge or get_chat_model(s, "judge")
+    )
 
     def understand(state: RagState) -> dict[str, Any]:
         from flp_rag.contracts import StandaloneQuery
@@ -202,9 +215,6 @@ def default_nodes(deps: Deps) -> GraphNodes:
             for c in state.get("candidates", [])
         ]
         return {"candidates": stubbed[: s.rerank.top_n]}
-
-    def check_output(state: RagState) -> dict[str, Any]:
-        raise NotImplementedError("Stage 17 output checks is issue #22")
 
     def respond(state: RagState) -> dict[str, Any]:
         status = state.get("status") or ("answered" if state.get("answer") else "error")

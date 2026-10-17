@@ -50,7 +50,7 @@ def _stub_graph_factory(
         def check_output(state: RagState) -> dict[str, Any]:
             if ran is not None:
                 ran.append("check_output")
-            return {"status": "answered"}
+            return {"check_result": "ok", "status": "answered"}
 
         def respond(state: RagState) -> dict[str, Any]:
             from flp_rag.contracts import Response

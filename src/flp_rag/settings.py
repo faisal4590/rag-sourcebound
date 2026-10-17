@@ -210,6 +210,10 @@ class OutputConfig(_Section):
     faithfulness_sample_rate: float = Field(ge=0, le=1)
     code_verbatim: bool = True
     judge_model: str
+    judge_prompt_file: Path
+    judge_temperature: float = Field(ge=0, le=2)
+    judge_max_output_tokens: int = Field(gt=0)
+    repair_prompt_file: Path  # named failure lines and the rewrite note for a Stage 17 repair
 
 
 class FeedbackConfig(_Section):
