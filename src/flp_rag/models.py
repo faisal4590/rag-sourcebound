@@ -22,6 +22,7 @@ environment or `.env` through `Secrets`, never from `config.yaml`.
 import json
 import math
 import re
+import threading
 import time
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
@@ -119,13 +120,15 @@ class Embedder(Protocol):
     dim: int
 
     def embed_passages(self, texts: Sequence[str]) -> list[list[float]]: ...
+    def embed_queries(self, texts: Sequence[str]) -> list[list[float]]: ...
     def embed_query(self, text: str) -> list[float]: ...
 
 
 class SparseEmbedder(Protocol):
     model_name: str
 
-    def embed(self, texts: Sequence[str]) -> list[SparseVector]: ...
+    def embed(self, texts: Sequence[str]) -> list[SparseVector]: ...  # document mode
+    def embed_query(self, texts: Sequence[str]) -> list[SparseVector]: ...  # query mode
 
 
 class Reranker(Protocol):
@@ -186,8 +189,11 @@ class BgeM3Embedder:
         )
         return [row.tolist() for row in vectors]
 
+    def embed_queries(self, texts: Sequence[str]) -> list[list[float]]:
+        return self.embed_passages(texts)  # bge-m3 encodes queries and passages the same way
+
     def embed_query(self, text: str) -> list[float]:
-        return self.embed_passages([text])[0]
+        return self.embed_queries([text])[0]
 
 
 class OpenAIEmbedder:
@@ -216,8 +222,11 @@ class OpenAIEmbedder:
             out.extend(item.embedding for item in response.data)
         return out
 
+    def embed_queries(self, texts: Sequence[str]) -> list[list[float]]:
+        return self.embed_passages(texts)
+
     def embed_query(self, text: str) -> list[float]:
-        return self.embed_passages([text])[0]
+        return self.embed_queries([text])[0]
 
 
 class FastembedSparse:
@@ -226,19 +235,30 @@ class FastembedSparse:
     def __init__(self, model_name: str) -> None:
         self.model_name = model_name
         self._model: Any = None
+        self._lock = threading.Lock()
 
     def _load(self) -> Any:
-        if self._model is None:
-            from fastembed import SparseTextEmbedding
+        with self._lock:  # Stage 12 runs in LangGraph's worker pool: load once
+            if self._model is None:
+                from fastembed import SparseTextEmbedding
 
-            self._model = SparseTextEmbedding(self.model_name)
-        return self._model
+                self._model = SparseTextEmbedding(self.model_name)
+            return self._model
 
     def embed(self, texts: Sequence[str]) -> list[SparseVector]:
-        return [
-            SparseVector(indices=[int(i) for i in emb.indices], values=[float(v) for v in emb.values])
-            for emb in self._load().embed(list(texts))
-        ]
+        """Document mode: term counts with the BM25 length correction (Stage 6)."""
+        return [_sparse(emb) for emb in self._load().embed(list(texts))]
+
+    def embed_query(self, texts: Sequence[str]) -> list[SparseVector]:
+        """Query mode: a weight of 1 per distinct term; Qdrant adds the IDF (Stage 12). A query
+        sent through document mode would count its words twice and drift the scores."""
+        return [_sparse(emb) for emb in self._load().query_embed(list(texts))]
+
+
+def _sparse(emb: Any) -> SparseVector:
+    return SparseVector(
+        indices=[int(i) for i in emb.indices], values=[float(v) for v in emb.values]
+    )
 
 
 # --------------------------------------------------------------------------- rerankers

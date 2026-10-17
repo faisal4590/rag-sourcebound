@@ -63,7 +63,7 @@ from flp_rag.ingest.s06_s07_index import (
     alias_target,
     qdrant_client,
 )
-from flp_rag.models import get_embeddings
+from flp_rag.models import get_embeddings, get_sparse_embeddings
 from flp_rag.settings import Settings, load_settings
 from flp_rag.stores.embedding_cache import EmbeddingCache
 
@@ -122,6 +122,7 @@ def build_deps(settings: Settings) -> Deps:
         settings=settings,
         client=qdrant_client(settings),
         embedder=get_embeddings(settings),
+        sparse=get_sparse_embeddings(settings),
         cache=cache,
     )
 

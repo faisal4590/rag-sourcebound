@@ -34,7 +34,7 @@ from flp_rag.graph.nodes import guard_input as guard_mod
 from flp_rag.graph.nodes import respond as respond_mod
 from flp_rag.graph.nodes import retrieve as retrieve_mod
 from flp_rag.graph.state import RagState
-from flp_rag.models import ChatModel, Embedder, get_chat_model
+from flp_rag.models import ChatModel, Embedder, SparseEmbedder, get_chat_model
 from flp_rag.settings import Settings
 from flp_rag.stores.embedding_cache import EmbeddingCache
 from flp_rag.tracing import stage
@@ -157,6 +157,7 @@ class Deps:
     settings: Settings
     client: QdrantClient | None = None
     embedder: Embedder | None = None
+    sparse: SparseEmbedder | None = None  # BM25 query encoder; embed.sparse_model when None
     cache: EmbeddingCache | None = None
     collection: str | None = None
     store_path: Path | None = None  # data/index/{index_version}/store.sqlite, for Stage 15
@@ -197,30 +198,31 @@ def default_nodes(deps: Deps) -> GraphNodes:
         }
 
     def retrieve(state: RagState) -> dict[str, Any]:
-        standalone = state.get("standalone")
-        question = standalone.standalone if standalone else state["question"]
-        candidates = retrieve_mod.retrieve_dense(
-            question,
+        candidates = retrieve_mod.retrieve_hybrid(
+            retrieve_mod.variants_from(state.get("standalone"), state["question"]),
             s,
             filters=state.get("filters"),
             client=deps.client,
             embedder=deps.embedder,
+            sparse=deps.sparse,
             cache=deps.cache,
             collection=deps.collection,
         )
         return {"candidates": candidates}
 
     def rerank(state: RagState) -> dict[str, Any]:
-        # TODO(#26): remove with the real reranker. The dense cosine stands in for the rerank
-        # score; it can be negative for off-topic questions and the gate needs 0 to 1, so the
-        # stub clamps. The thresholds belong to the reranker's scale: recalibrate at #26.
+        # TODO(#26): remove with the real reranker. The best dense cosine of a candidate stands
+        # in for the rerank score (RRF points are far below the gate thresholds); a chunk that
+        # only BM25 found scores 0 and cannot pass the gate until the reranker scores it, and a
+        # negative cosine clamps to 0. Recalibrate at #26.
         stubbed = [
             Candidate(
                 c.chunk_id,
                 c.fused_score,
-                min(1.0, max(0.0, c.fused_score)),
+                min(1.0, max(0.0, c.scores.get("dense", 0.0))),
                 c.provenance,
                 c.payload,
+                c.scores,
             )
             for c in state.get("candidates", [])
         ]
