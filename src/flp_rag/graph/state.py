@@ -14,6 +14,7 @@ from flp_rag.graph.nodes.retrieve import RetrievalFilters
 
 Status = Literal["answered", "no_information", "error"]
 GateDecision = Literal["pass", "abstain"]  # borderline is the flag below
+CheckResult = Literal["ok", "repair", "abstain"]  # Stage 17's edge value
 
 Turn = tuple[Literal["user", "assistant"], str]
 
@@ -28,6 +29,7 @@ class RagState(TypedDict, total=False):
     filters: RetrievalFilters | None
     stream: bool
     debug: bool
+    judge_all: bool  # the evaluation harness sets it: the faithfulness judge reads every answer
     # guardrails (Stage 10)
     injection_suspected: bool
     language: str
@@ -46,6 +48,9 @@ class RagState(TypedDict, total=False):
     answer: str
     prompt_version: str  # sha256(prompt file)[:8] of the prompt that produced the answer
     repair_calls: int  # model repair calls spent so far (budget gen.max_repair_calls)
+    check_result: CheckResult
+    repair_failure: str | None  # Stage 17 -> 16: the line that names the failed check
+    rejected_answer: str | None  # the answer Stage 17 sent back or replaced
     # response (Stage 18)
     status: Status
     abstain_reason: str | None
@@ -68,6 +73,7 @@ def initial_state(
     filters: RetrievalFilters | None = None,
     stream: bool = False,
     debug: bool = False,
+    judge_all: bool = False,
 ) -> RagState:
     return RagState(
         request_id=request_id,
@@ -78,9 +84,12 @@ def initial_state(
         filters=filters,
         stream=stream,
         debug=debug,
+        judge_all=judge_all,
         candidates=[],
         context=[],
         answer="",
+        repair_failure=None,
+        rejected_answer=None,
         abstain_reason=None,
         sources=[],
         timings_ms={},

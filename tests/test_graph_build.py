@@ -50,8 +50,9 @@ def stub_nodes(*, gate: str = "pass", smalltalk: bool = False, unfaithful: bool 
 
     def check_output(state: RagState) -> dict[str, Any]:
         if unfaithful:
-            return {"status": "no_information", "answer": ABSTAIN_TEXT, "abstain_reason": "output.unfaithful"}
-        return {"status": "answered"}
+            return {"check_result": "abstain", "status": "no_information", "answer": ABSTAIN_TEXT,
+                    "abstain_reason": "output.unfaithful"}
+        return {"check_result": "ok", "status": "answered"}
 
     def respond(state: RagState) -> dict[str, Any]:
         return {"status": state.get("status") or "answered"}
@@ -101,7 +102,8 @@ def test_compiled_graph_has_the_nine_nodes_and_conditional_edges() -> None:
     assert set(g.nodes) == {"__start__", "__end__", *build.NODE_ORDER}
     edges = {(e.source, e.target) for e in g.edges}
     assert {("understand", "retrieve"), ("understand", "respond"), ("gate", "assemble"), ("gate", "respond"),
-            ("check_output", "respond"), ("respond", "__end__")} <= edges
+            ("check_output", "respond"), ("check_output", "generate"),
+            ("respond", "__end__")} <= edges
     assert ("understand", "assemble") not in edges
 
 
@@ -248,7 +250,12 @@ def test_default_nodes_run_real_retrieval_and_abstain_without_generation(monkeyp
     assert response.status == "no_information" and response.debug["visited"][-1] == "respond"
 
     # The exact text of a chunk scores 1.0 and passes the gate; the pass route runs Stage 15 on
-    # the store (plain text, the fixture has no clean blocks) and Stage 16 on the fake chat, then
-    # hits the Stage 17 placeholder.
-    with pytest.raises(NotImplementedError, match="#22"):
-        app.invoke(initial_state(CHUNKS[2].embedding_text, request_id="r2"))
+    # the store (plain text, the fixture has no clean blocks), Stage 16 on the fake chat, and
+    # Stage 17 on the label map (the judge is not sampled at rate 0).
+    deps.settings = settings.model_copy(update={
+        "output": settings.output.model_copy(update={"faithfulness_sample_rate": 0.0})})
+    app = build.compile_default(deps)
+    state = app.invoke(initial_state(CHUNKS[2].embedding_text, request_id="r2"))
+    assert state["visited"][-4:] == ["assemble", "generate", "check_output", "respond"]
+    assert state["check_result"] == "ok" and state["status"] == "answered"
+    assert state["response"].answer == "Readonly is set once [S1]." and "S1" in state["label_map"]

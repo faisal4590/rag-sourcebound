@@ -301,7 +301,11 @@ def run_graph(
     exporter = InMemorySpanExporter()
     tracing.configure_tracing(settings, exporter=exporter, force=True)
     stubs = stub_nodes()
-    nodes = build.default_nodes(build.Deps(settings=fast(settings), chat=chat))
+    # Real Stage 16 and Stage 17; the judge is never sampled at rate 0, so any model serves.
+    quiet = fast(settings).model_copy(
+        update={"output": settings.output.model_copy(update={"faithfulness_sample_rate": 0.0})}
+    )
+    nodes = build.default_nodes(build.Deps(settings=quiet, chat=chat, judge=chat))
 
     def rerank(state: RagState) -> dict[str, Any]:
         return {
@@ -313,16 +317,13 @@ def run_graph(
     def assemble(state: RagState) -> dict[str, Any]:
         return {"context": BLOCKS, "label_map": {"S1": {}, "S2": {}}}
 
-    def check_output(state: RagState) -> dict[str, Any]:
-        return {}  # Stage 17 (#22) keeps an abstain from Stage 16 as it is
-
     mixed = build.GraphNodes(
         **{
             **stubs.as_dict(),
             "rerank": rerank,
             "assemble": assemble,
             "generate": nodes.generate,
-            "check_output": check_output,
+            "check_output": nodes.check_output,
             "respond": nodes.respond,
         }
     )

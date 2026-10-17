@@ -128,9 +128,13 @@ gen:
   seed: 42                                   # OpenAI and Ollama take a seed; Anthropic has none
 
 output:
-  faithfulness_sample_rate: 0.2
+  faithfulness_sample_rate: 0.2             # share of non-borderline answers the judge reads; borderline is always 1.0
   code_verbatim: true
   judge_model: <small-model-name>
+  judge_prompt_file: prompts/judge_faithfulness_v1.md
+  judge_temperature: 0
+  judge_max_output_tokens: 400              # the verdict is about 100 tokens of JSON
+  repair_prompt_file: prompts/repair_output_v1.md   # the lines that name a failed check, plus the rewrite note
 
 feedback:
   enabled: true                  # Stage 18: CLI keypress and POST /feedback

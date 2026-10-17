@@ -17,6 +17,8 @@ Plain functions of the question, the context blocks, the chat model, and `gen.*`
    `error` at the API, never the abstain text). Invalid output gets one repair call with the
    strict prompt and the invalid output, within the request's `gen.max_repair_calls` budget
    shared with Stage 17; a second invalid output abstains with `gen.invalid_output`.
+   Stage 17 sends a failed answer back through the same repair call (`repair_of`, with the
+   line that names the failed check as the note); the node reads `state.repair_failure`.
 5. Trace: the stage span `llm.generate` (kind LLM) carries the `gen_ai.*` attributes, the
    prompt version, the cost from the price table, and the repair count. The LangChain
    instrumentor adds one span per model call when `trace.instrument_langchain` is on.
@@ -37,6 +39,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from flp_rag.contracts import ContextBlock
+from flp_rag.graph.markers import has_marker
 from flp_rag.graph.state import RagState
 from flp_rag.models import (
     ChatModel,
@@ -49,7 +52,6 @@ from flp_rag.settings import ABSTAIN_TEXT, Settings
 from flp_rag.tracing import current_span
 
 CONTEXT_MARKER = "Context blocks:"
-MARKER = re.compile(r"\[S\d+\]")
 QUESTION_TAG = re.compile(r"</?\s*question\s*>", re.IGNORECASE)
 ABSTAIN_WRAP = re.compile(r"^[\s\"'`*_]+|[\s\"'`*_.]+$")
 CUT_FINISH_REASONS = ("length", "max_tokens")
@@ -155,7 +157,7 @@ def build_messages(
 def classify(text: str, abstain_text: str = ABSTAIN_TEXT) -> Form:
     if ABSTAIN_WRAP.sub("", text) == abstain_text:
         return "abstain"
-    if MARKER.search(text):
+    if has_marker(text):
         return "answer"
     return "invalid"
 
@@ -183,31 +185,63 @@ class GenResult:
         return sum(c.output_tokens for c in self.completions)
 
 
-def _call_with_retry(
+def call_with_retry(
     chat: ChatModel,
     system: str,
     messages: list[tuple[str, str]],
-    cfg: Any,
+    *,
+    temperature: float,
+    max_tokens: int,
+    backoff_s: float,
+    json_schema: dict[str, Any] | None = None,
     earlier: Sequence[Completion] = (),
 ) -> tuple[Completion, int]:
-    """One retry on a transport error, after `gen.retry_backoff_s`. Anything else is raised as
-    it is: a bad key or a bug is not an outage."""
+    """One retry on a transport error, after `backoff_s`. Anything else is raised as it is: a
+    bad key or a bug is not an outage. Stage 17 uses it for the judge call too."""
     last: Exception | None = None
     for attempt in (1, 2):
         try:
             completion = chat.complete(
-                system, messages, None, cfg.temperature, max_tokens=cfg.max_output_tokens
+                system, messages, json_schema, temperature, max_tokens=max_tokens
             )
             return completion, attempt
         except Exception as exc:
             if not is_transport_error(exc):
                 raise
             last = exc
-            if attempt == 1 and cfg.retry_backoff_s:
-                time.sleep(cfg.retry_backoff_s)
+            if attempt == 1 and backoff_s:
+                time.sleep(backoff_s)
     raise GenerationUnavailable(
         f"model {chat.model_name} failed after 2 attempts: {last}", earlier
     ) from last
+
+
+def _repair_call(
+    chat: ChatModel,
+    prompts: Prompts,
+    context: Sequence[ContextBlock],
+    question: str,
+    rejected: str,
+    note: str,
+    cfg: Any,
+    earlier: Sequence[Completion],
+) -> tuple[Completion, int]:
+    """The strict prompt, the rejected answer as the assistant turn, then the note that asks
+    for the rewrite (Stage 16's own note, or Stage 17's line that names the failed check)."""
+    strict_system, strict_user = build_messages(prompts.strict, context, question)
+    messages: list[tuple[str, str]] = [("user", strict_user)]
+    if rejected.strip():  # an empty assistant turn is rejected by some providers
+        messages.append(("assistant", rejected))
+    messages.append(("user", note))
+    return call_with_retry(
+        chat,
+        strict_system,
+        messages,
+        temperature=cfg.temperature,
+        max_tokens=cfg.max_output_tokens,
+        backoff_s=cfg.retry_backoff_s,
+        earlier=earlier,
+    )
 
 
 def _form(completion: Completion) -> Form:
@@ -225,21 +259,38 @@ def generate(
     settings: Settings,
     prompts: Prompts,
     repair_calls_used: int = 0,
+    repair_of: str | None = None,
+    repair_note: str | None = None,
 ) -> GenResult:
+    """One answer. With `repair_of`, the first call is skipped: the rejected answer from Stage 17
+    goes straight into the repair call, with `repair_note` as the line that names the failure."""
     cfg = settings.gen
-    prompt = prompts.strict if borderline else prompts.normal
-    system, user = build_messages(prompt, context, question)
-    completion, attempts = _call_with_retry(chat, system, [("user", user)], cfg)
-    completions = [completion]
-    repairs = 0
-    form = _form(completion)
-    if form == "invalid" and repair_calls_used + repairs < cfg.max_repair_calls:
-        strict_system, strict_user = build_messages(prompts.strict, context, question)
-        repair_messages: list[tuple[str, str]] = [("user", strict_user)]
-        if completion.text.strip():  # an empty assistant turn is rejected by some providers
-            repair_messages.append(("assistant", completion.text))
-        repair_messages.append(("user", prompts.repair_note))
-        completion, more = _call_with_retry(chat, strict_system, repair_messages, cfg, completions)
+    budget_left = cfg.max_repair_calls - repair_calls_used
+    completions: list[Completion] = []
+    attempts = repairs = 0
+    if repair_of is None:
+        prompt = prompts.strict if borderline else prompts.normal
+        system, user = build_messages(prompt, context, question)
+        completion, attempts = call_with_retry(
+            chat,
+            system,
+            [("user", user)],
+            temperature=cfg.temperature,
+            max_tokens=cfg.max_output_tokens,
+            backoff_s=cfg.retry_backoff_s,
+        )
+        completions.append(completion)
+        form = _form(completion)
+        rejected, note = completion.text, prompts.repair_note
+    else:
+        if budget_left < 1:
+            raise ValueError("a repair was requested but gen.max_repair_calls is spent")
+        prompt, form = prompts.strict, "invalid"
+        rejected, note = repair_of, repair_note or prompts.repair_note
+    if form == "invalid" and repairs < budget_left:
+        completion, more = _repair_call(
+            chat, prompts, context, question, rejected, note, cfg, completions
+        )
         completions.append(completion)
         attempts += more
         repairs = 1
@@ -300,6 +351,7 @@ def make_generate(
         standalone = state.get("standalone")
         question = standalone.standalone if standalone else state["question"]
         span = current_span()
+        failure = state.get("repair_failure")  # set by Stage 17 when it sends the answer back
         try:
             result = generate(
                 question,
@@ -309,6 +361,8 @@ def make_generate(
                 settings=settings,
                 prompts=prompts,
                 repair_calls_used=int(state.get("repair_calls", 0)),
+                repair_of=state.get("answer", "") if failure else None,
+                repair_note=failure,
             )
         except GenerationUnavailable as exc:
             # The calls that went through before the outage still count and cost.
@@ -328,6 +382,7 @@ def make_generate(
             "repair_calls": int(state.get("repair_calls", 0)) + result.repair_calls,
             "cost_usd": float(state.get("cost_usd", 0.0)) + result.cost_usd,
             "abstain_reason": result.abstain_reason,
+            "repair_failure": None,
         }
         if result.abstain_reason:
             span.set_attribute("rag.abstain_reason", result.abstain_reason)
