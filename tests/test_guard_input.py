@@ -192,7 +192,9 @@ def test_a_2001_char_question_returns_http_400(exporter: InMemorySpanExporter) -
         r = client.post("/ask", json={"question": "x" * 2001})
     assert r.status_code == 400
     body = r.json()
-    assert body["status"] == "error" and body["detail"] == REJECT and body["answer"] == ""
+    assert body["status"] == "error" and body["detail"] == REJECT
+    # Since Stage 18 (#23) every error answers in the one Response shape with the fixed text.
+    assert body["answer"] == load_settings().api.error_text and body["sources"] == []
     assert len(body["trace_id"]) == 32 and r.headers["X-Trace-Id"] == body["trace_id"]
     root = next(s for s in exporter.get_finished_spans() if s.name == "rag.request")
     assert root.attributes["rag.status"] == "error"

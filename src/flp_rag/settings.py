@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 ABSTAIN_TEXT = "No information found"
 
@@ -131,6 +131,16 @@ class ApiConfig(_Section):
     port: int = Field(gt=0, lt=65536)
     timeout_s: float = Field(gt=0)
     health_timeout_s: float = Field(gt=0)
+    error_text: str = Field(min_length=1)  # the answer field of a status `error` response
+
+    @field_validator("error_text")
+    @classmethod
+    def _not_the_abstain_text(cls, value: str) -> str:
+        if value.strip() == ABSTAIN_TEXT:
+            raise ValueError(
+                "api.error_text must not be the abstain text: an outage says nothing about the book"
+            )
+        return value
 
 
 class GuardConfig(_Section):

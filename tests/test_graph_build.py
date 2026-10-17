@@ -43,7 +43,11 @@ def stub_nodes(*, gate: str = "pass", smalltalk: bool = False, unfaithful: bool 
         return {"gate_decision": "pass", "borderline": gate == "borderline", "top_score": 0.7}
 
     def assemble(state: RagState) -> dict[str, Any]:
-        return {"context": []}
+        label_map = {"S1": {"chunk_ids": ["d:06:0001"], "parent_id": "p", "kind": "chunk",
+                            "chapter_no": 6, "chapter_title": "Readonly Properties",
+                            "section_title": "Readonly", "page_printed_start": 75,
+                            "page_printed_end": 77}}
+        return {"context": [], "label_map": label_map}
 
     def generate(state: RagState) -> dict[str, Any]:
         return {"answer": "Readonly properties are set once [S1]."}
@@ -182,7 +186,7 @@ def test_live_stub_nodes_write_spec_attributes() -> None:
     assert g["rag.gate_decision"] == "pass" and g["rag.score_top1"] == pytest.approx(0.7)
     assert (g["rag.tau_low"], g["rag.tau_pass"], g["rag.tau_high"]) == (0.2, 0.35, 0.6) and g["rag.n_pass"] == 1
     r = spans["response.build"]
-    assert r["rag.status"] == "answered" and r["rag.n_sources"] == 0 and r["rag.answer_chars"] > 0
+    assert r["rag.status"] == "answered" and r["rag.n_sources"] == 1 and r["rag.answer_chars"] > 0
 
 
 def test_instrument_langchain_reattaches_to_a_new_provider() -> None:

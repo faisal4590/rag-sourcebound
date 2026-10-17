@@ -381,6 +381,8 @@ def make_generate(
             "prompt_version": result.prompt_version,
             "repair_calls": int(state.get("repair_calls", 0)) + result.repair_calls,
             "cost_usd": float(state.get("cost_usd", 0.0)) + result.cost_usd,
+            "input_tokens": int(state.get("input_tokens", 0)) + result.input_tokens,
+            "output_tokens": int(state.get("output_tokens", 0)) + result.output_tokens,
             "abstain_reason": result.abstain_reason,
             "repair_failure": None,
         }

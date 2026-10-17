@@ -57,7 +57,7 @@ def _stub_graph_factory(
 
             status = state.get("status") or "answered"
             sources = (
-                [Source("S1", "d:06:0001", 6, "Readonly Properties", "Readonly", 75, 77, 0.9)]
+                [Source("S1", ["d:06:0001"], 6, "Readonly Properties", "Readonly", 75, 77, 0.9)]
                 if status == "answered"
                 else []
             )
@@ -217,6 +217,9 @@ def test_unhandled_and_not_implemented_errors_carry_a_trace_id(
     assert r.status_code == 501
     body = r.json()
     assert body["status"] == "error" and "#21" in body["detail"] and len(body["trace_id"]) == 32
+    # The same shape as every other response (issue #23): the fixed text, no sources, versions.
+    assert body["answer"] == load_settings().api.error_text and body["sources"] == []
+    assert body["index_version"] and body["debug"] is None
     root = next(s for s in exporter.get_finished_spans() if s.name == "rag.request")
     assert root.attributes["rag.status"] == "error"
     assert any(e.name == "exception" for e in root.events)
@@ -231,6 +234,11 @@ def test_unexpected_errors_hide_internals_from_the_client(
     body = r.json()
     assert body["status"] == "error" and body["trace_id"] in body["detail"]
     assert "secret" not in r.text and "qdrant-host" not in r.text
+    assert body["answer"] == load_settings().api.error_text and body["answer"] != ABSTAIN_TEXT
+    (tmp_path / "debug").mkdir()
+    with _client(tmp_path / "debug", exporter, raise_generic=True) as (client, _):
+        r = client.post("/ask", json={"question": "hello", "debug": True})
+    assert "qdrant-host" not in r.text and r.json()["debug"]["error"].startswith("RuntimeError")
     root = next(s for s in exporter.get_finished_spans() if s.name == "rag.request")
     assert root.status.status_code.name == "ERROR"
     assert any("qdrant-host" in str(e.attributes.get("exception.message")) for e in root.events)
@@ -273,7 +281,7 @@ def test_stream_sends_token_events_then_done(
     done = json.loads(events[-1].split("\ndata: ")[1])
     assert (
         done["status"] == "answered"
-        and done["sources"][0]["chunk_id"] == "d:06:0001"
+        and done["sources"][0]["chunk_ids"] == ["d:06:0001"]
         and len(done["trace_id"]) == 32
     )
 

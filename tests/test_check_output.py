@@ -66,7 +66,16 @@ BLOCKS = [
     ),
 ]
 LABEL_MAP = {
-    b.label: {"chunk_ids": b.source_ids, "chapter_no": b.chapter_no, "parent_id": f"p{i}"}
+    b.label: {
+        "chunk_ids": b.source_ids,
+        "parent_id": f"p{i}",
+        "kind": "chunk",
+        "chapter_no": b.chapter_no,
+        "chapter_title": b.chapter_title,
+        "section_title": b.chapter_title,
+        "page_printed_start": b.page_printed_start,
+        "page_printed_end": b.page_printed_end,
+    }
     for i, b in enumerate(BLOCKS)
 }
 CLEAN = "Promotion removes boilerplate [S1]. Readonly is set once [S3]."

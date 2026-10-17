@@ -1,6 +1,8 @@
-# Typer CLI: flp ask, flp ingest, flp eval, flp calibrate. Spec Appendix D.
-"""Command line entry point. Subcommands are stubs until their milestone lands."""
+# Typer CLI: flp ask, flp retrieve, flp ingest, flp eval, flp calibrate. Spec Appendix D.
+"""Command line entry point. `ask` runs the query graph and prints the `Response` record;
+`retrieve` lists chunks (the Milestone 2 view). `eval` and `calibrate` land in Milestone 6."""
 
+import uuid
 from pathlib import Path
 from typing import Annotated
 
@@ -33,11 +35,79 @@ def query_cache_path(settings: Settings) -> Path:
 @app.command()
 def ask(
     question: str,
+    chapter: Annotated[
+        list[int] | None, typer.Option(help="Only these chapter numbers. Repeatable.")
+    ] = None,
+    code: Annotated[
+        bool | None, typer.Option("--code/--no-code", help="Only chunks with, or without, code.")
+    ] = None,
+    debug: Annotated[bool, typer.Option(help="Print the debug field of the response.")] = False,
+) -> None:
+    """Answer one question from the book, with sources and the trace id (Stages 9-18)."""
+    # The API module owns the client setup; imported here so `flp ingest` stays light.
+    from flp_rag.api import app as api_mod
+    from flp_rag.graph import build as build_mod
+    from flp_rag.graph.nodes import respond as respond_mod
+    from flp_rag.graph.nodes import retrieve as retrieve_mod
+    from flp_rag.graph.state import initial_state
+
+    settings = load_settings()
+    tracing.configure_logging()
+    tracing.configure_tracing(settings)
+    filters = retrieve_mod.RetrievalFilters(chapter_no=tuple(chapter or ()), has_code=code)
+
+    @tracing.stage("rag.request", kind="CHAIN")
+    def request() -> dict:
+        """One root span like the API's: the record is built in every outcome, the summary
+        line is written once, and an error shows the safe detail only."""
+        span = tracing.current_span()
+        trace_id = format(span.get_span_context().trace_id, "032x")
+        request_id = str(uuid.uuid4())
+        span.set_attribute("rag.request_id", request_id)
+        span.set_attribute("rag.question_raw", question[:1000])
+        state = initial_state(
+            question, request_id=request_id, trace_id=trace_id, filters=filters, debug=debug
+        )
+        try:
+            deps = api_mod.build_deps(settings)
+            version, _ = api_mod.current_index_version(settings, deps)
+            if version is not None and deps.store_path is None:
+                deps.store_path = index_dir(settings) / version / "store.sqlite"
+            state["index_version"] = version or ""
+            final = build_mod.compile_default(deps).invoke(state)
+        except Exception as exc:  # noqa: BLE001 - the CLI answers in the one shape too
+            _, detail = api_mod.error_status(exc, trace_id)
+            span.record_exception(exc)
+            span.set_attribute("rag.status", "error")
+            response = respond_mod.build_response(
+                state, settings, error=f"{type(exc).__name__}: {detail}"
+            )
+            respond_mod.log_request(respond_mod.summarize(state, response, settings))
+            typer.echo(f"error: {detail}", err=True)
+            return {"response": response}
+        span.set_attribute("rag.status", final["response"].status)
+        span.set_attribute("rag.abstain_reason", final.get("abstain_reason") or "")
+        span.set_attribute("rag.cost_usd", float(final.get("cost_usd", 0.0)))
+        return final
+
+    try:
+        final = request()
+    finally:
+        tracing.shutdown_tracing()
+    response = final["response"]
+    typer.echo(respond_mod.format_response(response, debug=debug))
+    if response.status == "error":
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def retrieve(
+    question: str,
     chapter: Annotated[list[int] | None, typer.Option(help="Only these chapter numbers. Repeatable.")] = None,
     code: Annotated[bool | None, typer.Option("--code/--no-code", help="Only chunks with, or without, code.")] = None,
     top_k: Annotated[int | None, typer.Option(help="How many chunks. Default retrieval.top_k_dense.")] = None,
 ) -> None:
-    """Retrieve chunks for one question (Milestone 2: dense retrieval only, no answer yet)."""
+    """List the chunks that dense retrieval returns for one question (no answer)."""
     from flp_rag.graph.nodes import retrieve as retrieve_mod
     from flp_rag.stores.embedding_cache import EmbeddingCache
 

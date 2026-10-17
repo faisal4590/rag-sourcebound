@@ -315,7 +315,15 @@ def run_graph(
         }
 
     def assemble(state: RagState) -> dict[str, Any]:
-        return {"context": BLOCKS, "label_map": {"S1": {}, "S2": {}}}
+        label_map = {
+            b.label: {"chunk_ids": b.source_ids, "parent_id": f"p{b.label}", "kind": "chunk",
+                      "chapter_no": b.chapter_no, "chapter_title": b.chapter_title,
+                      "section_title": b.chapter_title,
+                      "page_printed_start": b.page_printed_start,
+                      "page_printed_end": b.page_printed_end}
+            for b in BLOCKS
+        }
+        return {"context": BLOCKS, "label_map": label_map}
 
     mixed = build.GraphNodes(
         **{

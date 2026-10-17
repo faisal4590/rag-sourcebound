@@ -142,10 +142,10 @@ def test_display_texts_come_from_the_parent_store(indexed) -> None:
     assert r.display_texts(hits, index_dir=tmp / "nowhere") == {}
 
 
-# --------------------------------------------------------------------------- flp ask
+# --------------------------------------------------------------------------- flp retrieve
 
 
-def test_flp_ask_prints_chunks_with_chapter_pages_and_score(indexed, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_flp_retrieve_prints_chunks_with_chapter_pages_and_score(indexed, monkeypatch: pytest.MonkeyPatch) -> None:
     settings, client, embedder, collection, tmp = indexed
     monkeypatch.setattr(cli, "load_settings", lambda: settings.model_copy(
         update={"index": settings.index.model_copy(update={"alias": collection})}))
@@ -154,7 +154,7 @@ def test_flp_ask_prints_chunks_with_chapter_pages_and_score(indexed, monkeypatch
     monkeypatch.setattr(cli, "index_dir", lambda _s: tmp / "index")
     monkeypatch.setattr(cli, "query_cache_path", lambda _s: tmp / "qcache.sqlite")
 
-    result = CliRunner().invoke(cli.app, ["ask", CHUNKS[2].embedding_text, "--top-k", "3"])
+    result = CliRunner().invoke(cli.app, ["retrieve", CHUNKS[2].embedding_text, "--top-k", "3"])
 
     assert result.exit_code == 0, result.output
     lines = result.output.splitlines()
@@ -164,10 +164,10 @@ def test_flp_ask_prints_chunks_with_chapter_pages_and_score(indexed, monkeypatch
     assert "Readonly properties are set once." in result.output
     assert "trace_id=" in result.output
 
-    filtered = CliRunner().invoke(cli.app, ["ask", "anything", "--chapter", "5", "--code"])
+    filtered = CliRunner().invoke(cli.app, ["retrieve", "anything", "--chapter", "5", "--code"])
     assert filtered.exit_code == 0 and "Chapter 05" in filtered.output and "Chapter 06" not in filtered.output
 
-    empty = CliRunner().invoke(cli.app, ["ask", "anything", "--chapter", "99"])
+    empty = CliRunner().invoke(cli.app, ["retrieve", "anything", "--chapter", "99"])
     assert empty.exit_code == 2 and "no chunks" in empty.output
 
 
@@ -176,8 +176,8 @@ def test_flp_ask_prints_chunks_with_chapter_pages_and_score(indexed, monkeypatch
 
 @pytest.mark.live
 @needs_live_alias
-def test_flp_ask_readonly_finds_chapter_6_on_the_real_index() -> None:
-    result = CliRunner().invoke(cli.app, ["ask", "What is a readonly property?", "--top-k", "5"])
+def test_flp_retrieve_readonly_finds_chapter_6_on_the_real_index() -> None:
+    result = CliRunner().invoke(cli.app, ["retrieve", "What is a readonly property?", "--top-k", "5"])
     assert result.exit_code == 0, result.output
     # A model-loading progress bar can share the first line, so parse with a pattern.
     rows = re.findall(r"(\d+)\. (\S+) Chapter (\d+): .*? score=(\d\.\d+)", result.output)

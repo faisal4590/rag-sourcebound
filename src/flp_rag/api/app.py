@@ -8,6 +8,10 @@ Rules (spec Section 6, Stage 9):
 3. Every response carries `trace_id`, error responses included. A middleware opens the root
    span for every request, so even a validation error has one, and sets `X-Trace-Id`.
 4. A request over `api.timeout_s` is cancelled and answered with HTTP 504 and the `trace_id`.
+   Every error that leaves the graph early (400, 504, 500, 501) answers with the same
+   `Response` shape as a normal request, built by Stage 18's builder: status `error`, the fixed
+   `api.error_text`, no sources, plus a `detail` line. Stage 18 also writes the one summary
+   log line for these requests, so every request has exactly one.
    LangGraph runs sync nodes in a thread pool, and a Python thread cannot be interrupted: the
    node that is running when the deadline passes finishes on its own, but no later node starts
    and its output is dropped. Each node therefore bounds its own calls (Qdrant client timeout,
@@ -48,6 +52,7 @@ from flp_rag.api.schemas import (
 from flp_rag.contracts import Response
 from flp_rag.graph.build import Deps, compile_default
 from flp_rag.graph.nodes import generate as gen_mod
+from flp_rag.graph.nodes import respond as respond_mod
 from flp_rag.graph.nodes.guard_input import InputRejected
 from flp_rag.graph.nodes.retrieve import RetrievalFilters
 from flp_rag.graph.state import RagState, initial_state
@@ -59,7 +64,7 @@ from flp_rag.ingest.s06_s07_index import (
     qdrant_client,
 )
 from flp_rag.models import get_embeddings
-from flp_rag.settings import ABSTAIN_TEXT, Settings, load_settings
+from flp_rag.settings import Settings, load_settings
 from flp_rag.stores.embedding_cache import EmbeddingCache
 
 log = structlog.get_logger()
@@ -223,6 +228,7 @@ def create_app(
             filters=filters,
             stream=body.stream,
             debug=body.debug,
+            index_version=st.index_version or "",
         )
         try:
             final = await asyncio.wait_for(
@@ -230,24 +236,20 @@ def create_app(
             )
         except InputRejected as exc:
             # Stage 10 rule 1: the exact message, HTTP 400, trace id included.
-            span.set_attribute("rag.status", "error")
-            span.set_attribute("rag.abstain_reason", "guard.rejected")
-            body_out = ErrorResponse(trace_id=request.state.trace_id, detail=str(exc))
-            return JSONResponse(status_code=400, content=body_out.model_dump())
-        except TimeoutError:
-            span.set_attribute("rag.status", "error")
-            span.set_attribute("rag.abstain_reason", "timeout")
+            return _early_exit(state, st, exc, 400, str(exc), reason="guard.rejected")
+        except TimeoutError as exc:
             log.error(
                 "request timed out",
                 timeout_s=st.settings.api.timeout_s,
                 trace_id=request.state.trace_id,
             )
-            body_out = ErrorResponse(
-                trace_id=request.state.trace_id,
-                detail=f"request exceeded {st.settings.api.timeout_s} s",
-            )
-            return JSONResponse(status_code=504, content=body_out.model_dump())
-        response = _response_from_state(final, request.state.trace_id, st)
+            detail = f"request exceeded {st.settings.api.timeout_s} s"
+            return _early_exit(state, st, exc, 504, detail, reason="timeout")
+        except Exception as exc:  # noqa: BLE001 - a failed stage still answers in the one shape
+            status, detail = error_status(exc, request.state.trace_id)
+            _record_error(exc, request.url.path, request.state.trace_id)
+            return _early_exit(state, st, exc, status, detail, reason=None)
+        response = _response_from_state(final, st)
         span.set_attribute("rag.status", response.status)
         span.set_attribute("rag.abstain_reason", final.get("abstain_reason") or "")
         span.set_attribute("rag.cost_usd", float(final.get("cost_usd", 0.0)))
@@ -307,41 +309,65 @@ def _first_error(exc: RequestValidationError) -> str:
     return f"{loc}: {e.get('msg', 'invalid')}"
 
 
-def _error_response(exc: Exception, trace_id: str, path: str) -> JSONResponse:
-    """500 for an unexpected failure, 501 for a stage that a later issue implements."""
+def _record_error(exc: Exception, path: str, trace_id: str) -> None:
+    """The exception on the root span and one ERROR line (spec 7.8 rule 5); never twice."""
     span = tracing.current_span()
     span.record_exception(exc)
     span.set_status(Status(StatusCode.ERROR, f"{type(exc).__name__}: {exc}"[:200]))
-    span.set_attribute("rag.status", "error")
     log.error("request failed", error=f"{type(exc).__name__}: {exc}", path=path, trace_id=trace_id)
+
+
+def error_status(exc: Exception, trace_id: str) -> tuple[int, str]:
+    """500 for an unexpected failure, 501 for a stage that a later issue implements. The
+    detail is safe to show: it never carries the exception message of an unexpected failure."""
     if isinstance(exc, NotImplementedError):
-        # A Milestone 3 placeholder names its issue. That message is ours and safe to show.
-        status, detail = 501, f"NotImplementedError: {exc}"
-    else:
-        # The full error is in the log under this trace id; the client gets no internals.
-        status, detail = 500, f"internal error, see trace {trace_id}"
+        # A placeholder names its issue. That message is ours and safe to show.
+        return 501, f"NotImplementedError: {exc}"
+    # The full error is in the log under this trace id; the client gets no internals.
+    return 500, f"internal error, see trace {trace_id}"
+
+
+def _error_response(exc: Exception, trace_id: str, path: str) -> JSONResponse:
+    """A failure outside `/ask` (no graph state): the short error body with the trace id."""
+    _record_error(exc, path, trace_id)
+    tracing.current_span().set_attribute("rag.status", "error")
+    status, detail = error_status(exc, trace_id)
     body = ErrorResponse(trace_id=trace_id, detail=detail)
     return JSONResponse(status_code=status, content=body.model_dump())
 
 
-def _response_from_state(final: RagState, trace_id: str, st: AppState) -> AskResponse:
-    contract: Response | None = final.get("response")
-    if contract is None:
-        contract = Response(
-            answer=final.get("answer") or ABSTAIN_TEXT,
-            status=final.get("status") or "error",  # type: ignore[arg-type]
-            sources=list(final.get("sources", [])),
-            trace_id=trace_id,
-            timings_ms={},
-            model={},
-            index_version="",
-            prompt_version="",
-            debug=None,
-        )
+def _early_exit(
+    state: RagState, st: AppState, exc: Exception, status: int, detail: str, *, reason: str | None
+) -> JSONResponse:
+    """A request that left the graph before Stage 18: the same `Response` shape through the
+    Stage 18 builder, the one summary log line, and the root span attributes. The record and
+    the line hold the totals known before the error (the state the graph started from), and
+    the debug field names only the exception class and the safe detail."""
+    contract = respond_mod.build_response(
+        state, st.settings, error=f"{type(exc).__name__}: {detail}"
+    )
+    span = tracing.current_span()
+    span.set_attribute("rag.status", "error")
+    if reason:
+        span.set_attribute("rag.abstain_reason", reason)
+    summary = respond_mod.summarize({**state, "abstain_reason": reason}, contract, st.settings)
+    respond_mod.log_request(summary)
     out = AskResponse.from_contract(
+        contract,
+        index_version=st.index_version or "",
+        prompt_version=st.prompt_version,
+        detail=detail,
+    )
+    return JSONResponse(status_code=status, content=out.model_dump())
+
+
+def _response_from_state(final: RagState, st: AppState) -> AskResponse:
+    contract: Response | None = final.get("response")
+    if contract is None:  # a graph whose respond node did not build the record (test stubs)
+        contract = respond_mod.build_response(final, st.settings)
+    return AskResponse.from_contract(
         contract, index_version=st.index_version or "", prompt_version=st.prompt_version
     )
-    return out.model_copy(update={"trace_id": trace_id})
 
 
 async def _sse(response: AskResponse) -> AsyncIterator[bytes]:
