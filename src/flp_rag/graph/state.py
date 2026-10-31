@@ -38,6 +38,7 @@ class RagState(TypedDict, total=False):
     stream: bool
     debug: bool
     judge_all: bool  # the evaluation harness sets it: the faithfulness judge reads every answer
+    run_tag: str | None  # a label for a batch of debug requests (issue #28); on the root span
     # guardrails (Stage 10)
     injection_suspected: bool
     language: str
@@ -85,6 +86,7 @@ def initial_state(
     debug: bool = False,
     judge_all: bool = False,
     index_version: str = "",
+    run_tag: str | None = None,
 ) -> RagState:
     return RagState(
         request_id=request_id,
@@ -98,6 +100,7 @@ def initial_state(
         stream=stream,
         debug=debug,
         judge_all=judge_all,
+        run_tag=run_tag,
         candidates=[],
         context=[],
         answer="",

@@ -173,9 +173,14 @@ def debug_field(
         "uncited_blocks": uncited_blocks(state, [s.label for s in sources]),
         "repair_calls": int(state.get("repair_calls", 0)),
         "timings_ms": dict(state.get("timings_ms", {})),
+        "cost_usd": float(state.get("cost_usd", 0.0)),
+        "input_tokens": int(state.get("input_tokens", 0)),
+        "output_tokens": int(state.get("output_tokens", 0)),
         "visited": [*state.get("visited", []), RESPOND_NODE],
         **info,
     }
+    if state.get("run_tag"):
+        debug["run_tag"] = state["run_tag"]
     if error is not None:
         debug["error"] = error
     return debug

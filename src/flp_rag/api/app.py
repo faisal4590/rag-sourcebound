@@ -129,8 +129,10 @@ def build_deps(settings: Settings) -> Deps:
         settings=settings,
         client=qdrant_client(settings),
         embedder=get_embeddings(settings),
-        sparse=get_sparse_embeddings(settings),
-        reranker=get_reranker(settings),
+        # The Milestone 3 switches (issue #28) leave the disabled components unbuilt, so a
+        # "before" run does not load the reranker or the BM25 encoder at all.
+        sparse=get_sparse_embeddings(settings) if settings.retrieval.sparse_enabled else None,
+        reranker=get_reranker(settings) if settings.rerank.enabled else None,
         cache=cache,
         sessions=sessions,
     )
@@ -234,6 +236,9 @@ def create_app(
         span = tracing.current_span()
         span.set_attribute("rag.session_id", body.session_id or "")
         span.set_attribute("rag.question_raw", body.question[:1000])
+        run_tag = body.run_tag if body.debug else None  # Part 2 of issue #28
+        if run_tag:
+            span.set_attribute("rag.run_tag", run_tag)
         filters = (
             RetrievalFilters(
                 chapter_no=tuple(body.filters.chapter_no or ()), has_code=body.filters.has_code
@@ -250,6 +255,7 @@ def create_app(
             stream=body.stream,
             debug=body.debug,
             index_version=st.index_version or "",
+            run_tag=run_tag,
         )
         try:
             final = await asyncio.wait_for(

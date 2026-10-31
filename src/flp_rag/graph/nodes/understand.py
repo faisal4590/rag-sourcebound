@@ -454,12 +454,19 @@ def make_understand(
 
     def understand_node(state: RagState) -> dict[str, Any]:
         question = state["question"]
+        span = current_span()
+        span.set_attribute("rag.understand_enabled", cfg.enabled)
+        if not cfg.enabled:  # the Milestone 3 passthrough: no history, no model call (issue #28)
+            query = fallback_query(question)
+            span.set_attribute("rag.intent", query.intent)
+            span.set_attribute("rag.n_variants", 1)
+            span.set_attribute("rag.understand_fallback", False)
+            return {"standalone": query, "history": []}
         history = load_history(state)
         result = understand(
             question, history, chat=model(), prompt=prompt, facts=index_facts(), settings=settings
         )
         query = result.query
-        span = current_span()
         variants = [*query.variants, *([query.keyword_variant] if query.keyword_variant else [])]
         if settings.trace.capture_content:  # the variants are question text too
             limit = settings.trace.attr_string_max_chars
