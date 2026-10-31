@@ -96,9 +96,22 @@ query:
   history_turns: 3
   expansions: 3
   smalltalk_policy: abstain      # abstain | greet
+  smalltalk_max_words: 8         # the early abstain applies to questions this short only (issue #27, Part 4)
   decompose: false
   hyde: false
   model: groq:openai/gpt-oss-20b        # Stage 11 rewrite and classify (Milestone 4); Groq free tier
+  prompt_file: prompts/query_v1.md
+  temperature: 0
+  max_output_tokens: 1200        # a reasoning model's thinking counts toward it
+  reasoning_effort: low          # OpenAI protocol reasoning models only
+  retry_backoff_s: 1.0           # pause before the one retry of a transport error or invalid output
+  max_standalone_words: 50       # a longer rewrite is an answer, not a question: the raw question is used
+  keep_question_symbols: true    # drop a paraphrase that loses a php_symbol named in the question
+
+session:
+  store_path: data/cache/sessions.sqlite   # one row per finished turn; Stage 18 writes, Stage 11 reads
+  ttl_hours: 24                  # a session expires this long after its last turn
+  answer_excerpt_chars: 300      # of the answer, kept with the turn for the rewrite
 
 retrieval:
   top_k_dense: 30

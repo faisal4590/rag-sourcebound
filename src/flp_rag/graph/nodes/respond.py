@@ -22,10 +22,14 @@ issue #23). No model call.
    thresholds, the uncited context blocks, the repair count and the failed check, the timings,
    and the path taken.
 6. `flp ask` prints the same record from the API's JSON body (issue #24).
+7. With a session id, one row per request goes to the session store (the standalone question,
+   the status, the first `session.answer_excerpt_chars` of the answer), so Stage 11 can
+   rewrite the next follow-up question (issue #27).
 """
 
 from __future__ import annotations
 
+import sqlite3
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
@@ -38,6 +42,7 @@ from flp_rag.graph.markers import canonical_markers, find_markers
 from flp_rag.graph.nodes.generate import prompt_version
 from flp_rag.graph.state import RagState
 from flp_rag.settings import ABSTAIN_TEXT, Settings
+from flp_rag.stores.session_store import SessionStore
 from flp_rag.tracing import current_span
 
 log = structlog.get_logger()
@@ -262,13 +267,39 @@ def log_request(summary: RequestSummary) -> None:
 # --------------------------------------------------------------------------- node
 
 
-def make_respond(settings: Settings) -> Callable[[RagState], dict[str, Any]]:
+def record_turn(state: Mapping[str, Any], response: Response, sessions: SessionStore | None) -> str:
+    """Issue #27, Part 1: one session row per finished request, also for an abstain, with the
+    standalone question of Stage 11 (the raw question when that stage fell back or did not
+    run). Nothing is written without a session id or a store. A store error (locked file,
+    full disk) is recorded on the span and logged, and the answer is still delivered: the
+    history improves the next rewrite, it is not part of this answer. Returns `written`,
+    `skipped`, or the error class name."""
+    session_id = state.get("session_id")
+    if sessions is None or not session_id:
+        return "skipped"
+    standalone = state.get("standalone")
+    question = standalone.standalone if standalone is not None else str(state.get("question", ""))
+    try:
+        sessions.add_turn(
+            str(session_id), question=question, status=response.status, answer=response.answer
+        )
+    except sqlite3.Error as exc:
+        current_span().record_exception(exc)
+        log.warning("session turn not written", error=type(exc).__name__, path=str(sessions.path))
+        return type(exc).__name__
+    return "written"
+
+
+def make_respond(
+    settings: Settings, sessions: SessionStore | None = None
+) -> Callable[[RagState], dict[str, Any]]:
     def respond_node(state: RagState) -> dict[str, Any]:
         response = build_response(state, settings)
         span = current_span()
         span.set_attribute("rag.status", response.status)
         span.set_attribute("rag.n_sources", len(response.sources))
         span.set_attribute("rag.answer_chars", len(response.answer))
+        span.set_attribute("rag.session_turn", record_turn(state, response, sessions))
         log_request(summarize(state, response, settings))
         return {
             "status": response.status,
