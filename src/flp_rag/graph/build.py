@@ -25,16 +25,23 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from qdrant_client import QdrantClient
 
-from flp_rag.contracts import Candidate
 from flp_rag.graph.nodes import assemble as assemble_mod
 from flp_rag.graph.nodes import check_output as check_mod
 from flp_rag.graph.nodes import gate as gate_mod
 from flp_rag.graph.nodes import generate as gen_mod
 from flp_rag.graph.nodes import guard_input as guard_mod
+from flp_rag.graph.nodes import rerank as rerank_mod
 from flp_rag.graph.nodes import respond as respond_mod
 from flp_rag.graph.nodes import retrieve as retrieve_mod
 from flp_rag.graph.state import RagState
-from flp_rag.models import ChatModel, Embedder, SparseEmbedder, get_chat_model
+from flp_rag.models import (
+    ChatModel,
+    Embedder,
+    Reranker,
+    SparseEmbedder,
+    get_chat_model,
+    get_reranker,
+)
 from flp_rag.settings import Settings
 from flp_rag.stores.embedding_cache import EmbeddingCache
 from flp_rag.tracing import stage
@@ -158,6 +165,7 @@ class Deps:
     client: QdrantClient | None = None
     embedder: Embedder | None = None
     sparse: SparseEmbedder | None = None  # BM25 query encoder; embed.sparse_model when None
+    reranker: Reranker | None = None  # the cross-encoder; from rerank.model on first use
     cache: EmbeddingCache | None = None
     collection: str | None = None
     store_path: Path | None = None  # data/index/{index_version}/store.sqlite, for Stage 15
@@ -167,10 +175,9 @@ class Deps:
 
 
 def default_nodes(deps: Deps) -> GraphNodes:
-    """Milestone 3 graph. Real: guard_input (#18), retrieve (dense, #15), gate (#19),
-    assemble (#20), generate (#21), check_output (#22), respond (#23). Stubs that Milestone 4
-    replaces: understand passthrough (#27), rerank_score = fused_score (#26, so the gate runs
-    on dense cosine until the reranker lands)."""
+    """Real: guard_input (#18), retrieve (hybrid, #25), rerank (#26), gate (#19), assemble
+    (#20), generate (#21), check_output (#22), respond (#23). One stub left: understand
+    passthrough (#27)."""
     s = deps.settings
 
     guard_input = guard_mod.make_guard_input(s)
@@ -180,6 +187,7 @@ def default_nodes(deps: Deps) -> GraphNodes:
     check_output = check_mod.make_check_output(
         s, lambda: deps.judge or get_chat_model(s, "judge")
     )
+    rerank = rerank_mod.make_rerank(s, lambda: deps.reranker or get_reranker(s), deps.store_path)
     respond = respond_mod.make_respond(s)
 
     def understand(state: RagState) -> dict[str, Any]:
@@ -209,24 +217,6 @@ def default_nodes(deps: Deps) -> GraphNodes:
             collection=deps.collection,
         )
         return {"candidates": candidates}
-
-    def rerank(state: RagState) -> dict[str, Any]:
-        # TODO(#26): remove with the real reranker. The best dense cosine of a candidate stands
-        # in for the rerank score (RRF points are far below the gate thresholds); a chunk that
-        # only BM25 found scores 0 and cannot pass the gate until the reranker scores it, and a
-        # negative cosine clamps to 0. Recalibrate at #26.
-        stubbed = [
-            Candidate(
-                c.chunk_id,
-                c.fused_score,
-                min(1.0, max(0.0, c.scores.get("dense", 0.0))),
-                c.provenance,
-                c.payload,
-                c.scores,
-            )
-            for c in state.get("candidates", [])
-        ]
-        return {"candidates": stubbed[: s.rerank.top_n]}
 
     return GraphNodes(
         guard_input, understand, retrieve, rerank, gate, assemble, generate, check_output, respond

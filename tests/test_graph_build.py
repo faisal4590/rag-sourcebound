@@ -225,8 +225,8 @@ def test_default_nodes_run_real_retrieval_and_abstain_without_generation(monkeyp
     settings = load_settings()
     settings = settings.model_copy(update={
         "embed": settings.embed.model_copy(update={"dim": 8, "batch_size": 2}),
-        # The fake embedder's cosines are arbitrary. Only an exact-text match (1.0) may pass.
-        "gate": settings.gate.model_copy(update={"tau_low": 0.99, "tau_pass": 0.995, "tau_high": 0.999}),
+        # The fake reranker gives 1.0 to the exact-text chunk and 0.1 to the rest.
+        "gate": settings.gate.model_copy(update={"tau_low": 0.5, "tau_pass": 0.9, "tau_high": 0.95}),
     })
     tracing.configure_tracing(settings, exporter=InMemorySpanExporter(), force=True)
     write_jsonl(tmp / "enriched" / "d.jsonl", CHUNKS)
@@ -237,30 +237,39 @@ def test_default_nodes_run_real_retrieval_and_abstain_without_generation(monkeyp
     indexed = s7.index("d", settings, in_dir=tmp / "enriched", vectors_dir=tmp / "vectors",
                        parents_dir=tmp / "parents", index_dir=tmp / "index", client=client)
     from tests.test_generate import FakeChat
+    from tests.test_rerank import FakeReranker
 
+    class QuoteReranker(FakeReranker):
+        """1.0 when the question quotes the chunk, else 0.1: only such a question passes the gate."""
+
+        def score(self, query, texts):  # type: ignore[no-untyped-def]
+            self.calls.append((query, list(texts)))
+            return [1.0 if query.strip() and query.strip() in t else 0.1 for t in texts]
+
+    reranker = QuoteReranker()
     deps = build.Deps(settings=settings, client=client, embedder=embedder, collection=indexed.collection,
-                      store_path=indexed.store_path, chat=FakeChat("Readonly is set once [S1]."))
+                      store_path=indexed.store_path, chat=FakeChat("Readonly is set once [S1]."),
+                      reranker=reranker)
     app = build.compile_default(deps)
 
-    # Any question that is not an exact chunk text scores under 0.999, so the gate abstains.
+    # Any question that does not quote a chunk scores 0.1 at the fake reranker: the gate abstains.
     state = app.invoke(initial_state("completely unrelated question about cooking", request_id="r1", debug=True))
     assert state["visited"] == ["guard_input", "understand", "retrieve", "rerank", "gate", "respond"]
-    # The stub rerank clamps the best dense cosine into 0..1 (a fake cosine can be negative).
-    assert state["candidates"] and all(
-        c.rerank_score == min(1.0, max(0.0, c.scores.get("dense", 0.0))) for c in state["candidates"])
+    # Every candidate that reached the gate carries a reranker score in 0..1.
+    assert state["candidates"] and all(0.0 <= c.rerank_score <= 1.0 for c in state["candidates"])
     assert len(state["candidates"]) <= settings.rerank.top_n
     assert state["status"] == "no_information" and state["answer"] == ABSTAIN_TEXT
     assert state["abstain_reason"].startswith("gate.")
     response = state["response"]
     assert response.status == "no_information" and response.debug["visited"][-1] == "respond"
 
-    # The exact text of a chunk scores 1.0 and passes the gate; the pass route runs Stage 15 on
+    # The exact text of a chunk scores 1.0 at the reranker and passes the gate; Stage 15 runs on
     # the store (plain text, the fixture has no clean blocks), Stage 16 on the fake chat, and
     # Stage 17 on the label map (the judge is not sampled at rate 0).
     deps.settings = settings.model_copy(update={
         "output": settings.output.model_copy(update={"faithfulness_sample_rate": 0.0})})
     app = build.compile_default(deps)
-    state = app.invoke(initial_state(CHUNKS[2].embedding_text, request_id="r2"))
+    state = app.invoke(initial_state(CHUNKS[2].display_text, request_id="r2"))
     assert state["visited"][-4:] == ["assemble", "generate", "check_output", "respond"]
     assert state["check_result"] == "ok" and state["status"] == "answered"
     assert state["response"].answer == "Readonly is set once [S1]." and "S1" in state["label_map"]

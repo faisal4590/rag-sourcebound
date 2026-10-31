@@ -133,8 +133,11 @@ class SparseEmbedder(Protocol):
 
 class Reranker(Protocol):
     model_name: str
+    device: str  # where the model runs: cuda, mps, cpu, or hosted
 
-    def score(self, query: str, texts: Sequence[str]) -> list[float]: ...
+    def warm_up(self) -> None: ...  # load now, so the first request pays nothing
+    def score(self, query: str, texts: Sequence[str]) -> list[float]: ...  # 0..1 per text
+    def truncated_pairs(self, query: str, texts: Sequence[str]) -> int: ...
 
 
 Message = tuple[Literal["user", "assistant"], str]
@@ -268,48 +271,109 @@ def sigmoid(x: float) -> float:
     return 1.0 / (1.0 + math.exp(-x))
 
 
-class BgeReranker:
-    """Local cross-encoder. Logits pass through a sigmoid so scores lie in [0, 1]."""
+def pick_device(requested: str) -> str:
+    """`auto` picks CUDA, then Apple Silicon (MPS), then the CPU."""
+    if requested != "auto":
+        return requested
+    import torch
 
-    def __init__(self, model_name: str, batch_size: int = 16) -> None:
-        self.model_name, self.batch_size = model_name, batch_size
+    if torch.cuda.is_available():
+        return "cuda"
+    if torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
+
+
+class BgeReranker:
+    """Local cross-encoder. The raw model output is a logit; one sigmoid maps it to [0, 1],
+    applied here and nowhere else (issue #26, Part 3). Loads once, under a lock, on the device
+    `rerank.device` picks (resolved at load, so building the object imports no torch);
+    `warm_up` scores one pair so the first request pays no load time. Inference is serialized:
+    LangGraph runs nodes in a worker pool, and one model must not run two forward passes at
+    once on MPS."""
+
+    def __init__(
+        self,
+        model_name: str,
+        batch_size: int = 16,
+        *,
+        max_length: int = 512,
+        device: str = "auto",
+    ) -> None:
+        self.model_name, self.batch_size, self.max_length = model_name, batch_size, max_length
+        self.requested_device = device
+        self._device: str | None = None
         self._model: Any = None
         self._tokenizer: Any = None
         self._torch: Any = None
+        self._lock = threading.Lock()
+        self._infer_lock = threading.Lock()
+
+    @property
+    def device(self) -> str:
+        return self._device or self.requested_device
 
     def _load(self) -> tuple[Any, Any]:
-        if self._model is None:
-            import torch
-            from transformers import AutoModelForSequenceClassification, AutoTokenizer
+        with self._lock:
+            if self._model is None:
+                import torch
+                from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-            self._tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-            self._model = AutoModelForSequenceClassification.from_pretrained(self.model_name)
-            self._model.eval()
-            self._torch = torch
-        return self._tokenizer, self._model
+                self._device = pick_device(self.requested_device)
+                self._tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+                model = AutoModelForSequenceClassification.from_pretrained(self.model_name)
+                self._model = model.to(self._device).eval()
+                self._torch = torch
+            return self._tokenizer, self._model
+
+    def warm_up(self) -> None:
+        self.score("warm up", ["one pair, so the first request is as fast as the others"])
 
     def score(self, query: str, texts: Sequence[str]) -> list[float]:
         tokenizer, model = self._load()
         scores: list[float] = []
-        with self._torch.no_grad():
+        with self._infer_lock, self._torch.no_grad():
             for start in range(0, len(texts), self.batch_size):
                 batch = list(texts[start : start + self.batch_size])
                 inputs = tokenizer(
-                    [query] * len(batch), batch, padding=True, truncation=True,
-                    max_length=512, return_tensors="pt",
-                )
-                logits = model(**inputs).logits.view(-1).tolist()
+                    [query] * len(batch),
+                    batch,
+                    padding=True,
+                    truncation=True,
+                    max_length=self.max_length,
+                    return_tensors="pt",
+                ).to(self.device)
+                logits = model(**inputs).logits.view(-1).float().cpu().tolist()
                 scores.extend(sigmoid(float(x)) for x in logits)
+        if not all(math.isfinite(s) for s in scores):
+            raise RuntimeError(f"reranker {self.model_name} returned a non-finite score")
         return scores
+
+    def truncated_pairs(self, query: str, texts: Sequence[str]) -> int:
+        """Pairs over `max_length` with the reranker's own tokenizer, which counts code
+        differently from cl100k_base."""
+        tokenizer, _ = self._load()
+        lengths = tokenizer(
+            [query] * len(texts), list(texts), truncation=False, return_length=True
+        )["length"]
+        return sum(1 for n in lengths if n > self.max_length)
 
 
 class CohereReranker:
     """Hosted reranking through Cohere. Scores are already in [0, 1]."""
 
+    device = "hosted"
+
     def __init__(self, model_name: str, api_key: str | None = None, client: Any = None) -> None:
         self.model_name = model_name
         self._api_key = api_key
         self._client = client
+
+    def warm_up(self) -> None:
+        return None  # nothing to load
+
+    def truncated_pairs(self, query: str, texts: Sequence[str]) -> int:
+        return 0  # the service applies its own limit
 
     def _load(self) -> Any:
         if self._client is None:
@@ -535,4 +599,6 @@ def get_reranker(settings: Settings, secrets: Secrets | None = None) -> Reranker
     if cfg.model.startswith("rerank"):
         secrets = secrets or Secrets()
         return CohereReranker(cfg.model, api_key=secrets.require("cohere_api_key"))
-    return BgeReranker(cfg.model, batch_size=cfg.batch_size)
+    return BgeReranker(
+        cfg.model, batch_size=cfg.batch_size, max_length=cfg.max_length, device=cfg.device
+    )

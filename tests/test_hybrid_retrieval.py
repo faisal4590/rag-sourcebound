@@ -15,9 +15,7 @@ from qdrant_client.http import models as http_models
 
 from flp_rag import tracing
 from flp_rag.contracts import Candidate, StandaloneQuery
-from flp_rag.graph import build
 from flp_rag.graph.nodes import retrieve as r
-from flp_rag.graph.state import initial_state
 from flp_rag.models import SparseVector
 from flp_rag.settings import load_settings
 from tests.test_retrieve import CHUNKS, indexed, needs_live_alias  # noqa: F401 - fixture
@@ -387,23 +385,6 @@ def test_spans_and_attributes_on_the_in_memory_index(indexed) -> None:  # noqa: 
     # BM25 ranks a readonly chunk first: the rare word outweighs "properties" in Chapter 5.
     first_sparse = next(c for c in out if "sparse:v0:r1" in c.provenance)
     assert first_sparse.payload["chapter_no"] == 6
-
-
-# --------------------------------------------------------------------------- graph
-
-
-def test_rerank_stub_reads_the_dense_score_until_the_reranker_lands(settings) -> None:
-    nodes = build.default_nodes(build.Deps(settings=settings))
-    state = initial_state("q", request_id="r1")
-    state["candidates"] = [
-        Candidate(
-            "A", 0.03, None, ["dense:v0:r1", "sparse:v0:r2"], {}, {"dense": 0.72, "sparse": 9.0}
-        ),
-        Candidate("B", 0.02, None, ["sparse:v0:r1"], {}, {"sparse": 12.0}),
-        Candidate("C", 0.01, None, ["dense:v0:r2"], {}, {"dense": -0.1}),
-    ]
-    out = nodes.rerank(state)["candidates"]
-    assert [c.rerank_score for c in out] == [0.72, 0.0, 0.0]
 
 
 # --------------------------------------------------------------------------- live
