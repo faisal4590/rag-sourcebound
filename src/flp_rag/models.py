@@ -49,7 +49,13 @@ class ModelConfigError(ValueError):
 
 
 class InvalidOutput(ValueError):
-    """A chat model returned text that does not satisfy the requested JSON schema."""
+    """A chat model returned text that does not satisfy the requested JSON schema. When the
+    call itself went through, `completion` holds it (text, tokens), so the caller can still
+    count the tokens of the failed attempt."""
+
+    def __init__(self, message: str, completion: "Completion | None" = None) -> None:
+        super().__init__(message)
+        self.completion = completion
 
 
 # --------------------------------------------------------------------------- secrets
@@ -180,15 +186,23 @@ class BgeM3Embedder:
             from sentence_transformers import SentenceTransformer
 
             self._model = SentenceTransformer(self.model_name)
-            getter = getattr(self._model, "get_embedding_dimension", None) or self._model.get_sentence_embedding_dimension
+            getter = (
+                getattr(self._model, "get_embedding_dimension", None)
+                or self._model.get_sentence_embedding_dimension
+            )
             found = getter()
             if found != self.dim:
-                raise ModelConfigError(f"{self.model_name} has {found} dimensions, config says {self.dim}")
+                raise ModelConfigError(
+                    f"{self.model_name} has {found} dimensions, config says {self.dim}"
+                )
         return self._model
 
     def embed_passages(self, texts: Sequence[str]) -> list[list[float]]:
         vectors = self._load().encode(
-            list(texts), batch_size=self.batch_size, normalize_embeddings=True, convert_to_numpy=True
+            list(texts),
+            batch_size=self.batch_size,
+            normalize_embeddings=True,
+            convert_to_numpy=True,
         )
         return [row.tolist() for row in vectors]
 
@@ -380,7 +394,9 @@ class CohereReranker:
             try:
                 import cohere
             except ImportError as exc:  # pragma: no cover
-                raise ModelConfigError("install the `cohere` package to use a Cohere reranker") from exc
+                raise ModelConfigError(
+                    "install the `cohere` package to use a Cohere reranker"
+                ) from exc
             self._client = cohere.ClientV2(api_key=self._api_key)
         return self._client
 
@@ -426,21 +442,33 @@ class LangChainChat:
         response = self.llm.invoke(prompt, **self.invoke_kwargs(temperature, max_tokens))
         latency_ms = int((time.perf_counter() - started) * 1000)
         text = _content_text(response)
-        parsed = _parse_json(text, json_schema) if json_schema is not None else None
         usage = getattr(response, "usage_metadata", None) or {}
         meta = getattr(response, "response_metadata", None) or {}
-        return Completion(
-            text=json.dumps(parsed, ensure_ascii=False) if parsed is not None else text,
-            input_tokens=int(usage.get("input_tokens", 0)),
-            output_tokens=int(usage.get("output_tokens", 0)),
-            # Anthropic: stop_reason. OpenAI: finish_reason. Ollama: done_reason.
-            finish_reason=str(
-                meta.get("stop_reason") or meta.get("finish_reason") or meta.get("done_reason") or "unknown"
-            ),
-            latency_ms=latency_ms,
-            model_name=self.model_name,
-            json=parsed,
-        )
+
+        def completion(parsed: dict[str, Any] | None) -> Completion:
+            return Completion(
+                text=json.dumps(parsed, ensure_ascii=False) if parsed is not None else text,
+                input_tokens=int(usage.get("input_tokens", 0)),
+                output_tokens=int(usage.get("output_tokens", 0)),
+                # Anthropic: stop_reason. OpenAI: finish_reason. Ollama: done_reason.
+                finish_reason=str(
+                    meta.get("stop_reason")
+                    or meta.get("finish_reason")
+                    or meta.get("done_reason")
+                    or "unknown"
+                ),
+                latency_ms=latency_ms,
+                model_name=self.model_name,
+                json=parsed,
+            )
+
+        if json_schema is None:
+            return completion(None)
+        try:
+            parsed = _parse_json(text, json_schema)
+        except InvalidOutput as exc:
+            raise InvalidOutput(str(exc), completion(None)) from exc
+        return completion(parsed)
 
     def stream(
         self,
@@ -541,7 +569,9 @@ def _chat_spec(settings: Settings, role: ChatRole) -> tuple[str, str]:
     }[role]
 
 
-def get_chat_model(settings: Settings, role: ChatRole, secrets: Secrets | None = None) -> LangChainChat:
+def get_chat_model(
+    settings: Settings, role: ChatRole, secrets: Secrets | None = None
+) -> LangChainChat:
     """The chat model for one role: `gen` (answers), `query` (rewrite and classify), `judge`."""
     key, spec = _chat_spec(settings, role)
     try:
@@ -575,7 +605,7 @@ def get_chat_model(settings: Settings, role: ChatRole, secrets: Secrets | None =
     effort = {
         "gen": settings.gen.reasoning_effort,
         "judge": settings.output.judge_reasoning_effort,
-        "query": None,
+        "query": settings.query.reasoning_effort,
     }[role]
     return LangChainChat(
         llm, model_name=spec, price=settings.price_for(spec), seed=seed, reasoning_effort=effort

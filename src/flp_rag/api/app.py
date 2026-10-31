@@ -66,6 +66,7 @@ from flp_rag.ingest.s06_s07_index import (
 from flp_rag.models import get_embeddings, get_reranker, get_sparse_embeddings
 from flp_rag.settings import Settings, load_settings
 from flp_rag.stores.embedding_cache import EmbeddingCache
+from flp_rag.stores.session_store import SessionStore
 
 log = structlog.get_logger()
 
@@ -117,7 +118,13 @@ class AppState:
 
 
 def build_deps(settings: Settings) -> Deps:
-    cache = EmbeddingCache(settings.config_path.parent / settings.embed.cache_path)
+    root = settings.config_path.parent
+    cache = EmbeddingCache(root / settings.embed.cache_path)
+    sessions = SessionStore(
+        root / settings.session.store_path,
+        ttl_hours=settings.session.ttl_hours,
+        excerpt_chars=settings.session.answer_excerpt_chars,
+    )
     return Deps(
         settings=settings,
         client=qdrant_client(settings),
@@ -125,6 +132,7 @@ def build_deps(settings: Settings) -> Deps:
         sparse=get_sparse_embeddings(settings),
         reranker=get_reranker(settings),
         cache=cache,
+        sessions=sessions,
     )
 
 
@@ -168,6 +176,8 @@ def create_app(
         yield
         if owns_deps and d.cache is not None:
             d.cache.close()
+        if owns_deps and d.sessions is not None:
+            d.sessions.close()
         if configure_tracing:
             tracing.shutdown_tracing()
 

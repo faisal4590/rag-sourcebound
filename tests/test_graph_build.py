@@ -5,6 +5,7 @@ smalltalk at understand, and unfaithful at the output check. Node spans must be 
 caller's `rag.request` span with the spec's names.
 """
 
+import json
 from typing import Any
 
 import pytest
@@ -247,9 +248,12 @@ def test_default_nodes_run_real_retrieval_and_abstain_without_generation(monkeyp
             return [1.0 if query.strip() and query.strip() in t else 0.1 for t in texts]
 
     reranker = QuoteReranker()
+    # Stage 11 on a scripted small model: the classification and the variants, no network.
+    understanding = json.dumps({"standalone": "", "intent": "book_question", "wants_code": False,
+                                "chapter_hint": None, "paraphrases": [], "keywords": "readonly"})
     deps = build.Deps(settings=settings, client=client, embedder=embedder, collection=indexed.collection,
                       store_path=indexed.store_path, chat=FakeChat("Readonly is set once [S1]."),
-                      reranker=reranker)
+                      query_chat=FakeChat(understanding, understanding), reranker=reranker)
     app = build.compile_default(deps)
 
     # Any question that does not quote a chunk scores 0.1 at the fake reranker: the gate abstains.

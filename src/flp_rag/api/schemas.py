@@ -22,7 +22,7 @@ class AskRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     question: str
-    session_id: str | None = None
+    session_id: str | None = Field(default=None, min_length=1, max_length=128)
     filters: FiltersIn | None = None
     stream: bool = False
     debug: bool = False

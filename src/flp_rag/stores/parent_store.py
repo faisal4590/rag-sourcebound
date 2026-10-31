@@ -209,6 +209,28 @@ class ParentStore:
             payload=payload,
         )
 
+    # ---- index facts (Stage 11, issue #27)
+
+    def chapters(self) -> list[tuple[int, str]]:
+        """The distinct (chapter_no, chapter_title) pairs of the indexed chunks, in book order.
+        Stage 11 puts this list into the query prompt, so it describes the indexed book, never a
+        typed copy of it."""
+        rows = self._conn.execute(
+            "SELECT json_extract(payload_json, '$.chapter_no') AS no, "
+            "json_extract(payload_json, '$.chapter_title') AS title "
+            "FROM chunks WHERE json_extract(payload_json, '$.chapter_no') IS NOT NULL "
+            "GROUP BY no, title ORDER BY MIN(rowid)"
+        ).fetchall()
+        return [(int(no), str(title)) for no, title in rows]
+
+    def php_symbols(self) -> set[str]:
+        """Every `php_symbols` entry of the indexed chunks, lower-cased."""
+        rows = self._conn.execute(
+            "SELECT DISTINCT lower(value) FROM chunks, "
+            "json_each(json_extract(payload_json, '$.php_symbols'))"
+        ).fetchall()
+        return {str(row[0]) for row in rows}
+
     # ---- integrity
 
     def count(self, table: str) -> int:

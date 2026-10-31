@@ -11,7 +11,7 @@ tracing code. The root span `rag.request` is opened by the caller (Stage 9, or `
 before `invoke`, so the node spans become its children.
 
 `GraphNodes` names the nine node functions. Tests pass stubs. `default_nodes` wires the real
-implementations that exist and marks the rest as Milestone 3 placeholders by issue number.
+implementations.
 """
 
 import inspect
@@ -33,6 +33,7 @@ from flp_rag.graph.nodes import guard_input as guard_mod
 from flp_rag.graph.nodes import rerank as rerank_mod
 from flp_rag.graph.nodes import respond as respond_mod
 from flp_rag.graph.nodes import retrieve as retrieve_mod
+from flp_rag.graph.nodes import understand as understand_mod
 from flp_rag.graph.state import RagState
 from flp_rag.models import (
     ChatModel,
@@ -44,6 +45,7 @@ from flp_rag.models import (
 )
 from flp_rag.settings import Settings
 from flp_rag.stores.embedding_cache import EmbeddingCache
+from flp_rag.stores.session_store import SessionStore
 from flp_rag.tracing import stage
 
 Node = Callable[[RagState], dict[str, Any]]
@@ -171,16 +173,23 @@ class Deps:
     store_path: Path | None = None  # data/index/{index_version}/store.sqlite, for Stage 15
     chat: ChatModel | None = None  # the answer model; built from gen.model on first use when None
     judge: ChatModel | None = None  # the faithfulness judge; from output.judge_model when None
+    query_chat: ChatModel | None = None  # the Stage 11 small model; from query.model when None
+    sessions: SessionStore | None = None  # conversation turns; Stage 18 writes, Stage 11 reads
     extra: dict[str, Any] = field(default_factory=dict)
 
 
 def default_nodes(deps: Deps) -> GraphNodes:
-    """Real: guard_input (#18), retrieve (hybrid, #25), rerank (#26), gate (#19), assemble
-    (#20), generate (#21), check_output (#22), respond (#23). One stub left: understand
-    passthrough (#27)."""
+    """Real: guard_input (#18), understand (#27), retrieve (hybrid, #25), rerank (#26), gate
+    (#19), assemble (#20), generate (#21), check_output (#22), respond (#23)."""
     s = deps.settings
 
     guard_input = guard_mod.make_guard_input(s)
+    understand = understand_mod.make_understand(
+        s,
+        lambda: deps.query_chat or get_chat_model(s, "query"),
+        lambda: understand_mod.IndexFacts.from_store(deps.store_path),
+        deps.sessions,
+    )
     gate = gate_mod.make_gate(s)
     assemble = assemble_mod.make_assemble(s, deps.store_path)
     generate = gen_mod.make_generate(s, lambda: deps.chat or get_chat_model(s, "gen"))
@@ -188,22 +197,7 @@ def default_nodes(deps: Deps) -> GraphNodes:
         s, lambda: deps.judge or get_chat_model(s, "judge")
     )
     rerank = rerank_mod.make_rerank(s, lambda: deps.reranker or get_reranker(s), deps.store_path)
-    respond = respond_mod.make_respond(s)
-
-    def understand(state: RagState) -> dict[str, Any]:
-        from flp_rag.contracts import StandaloneQuery
-
-        q = state["question"]
-        return {
-            "standalone": StandaloneQuery(
-                raw=q,
-                standalone=q,
-                intent="book_question",
-                wants_code=False,
-                chapter_hint=None,
-                variants=[q],
-            )
-        }
+    respond = respond_mod.make_respond(s, deps.sessions)
 
     def retrieve(state: RagState) -> dict[str, Any]:
         candidates = retrieve_mod.retrieve_hybrid(

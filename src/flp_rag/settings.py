@@ -170,9 +170,25 @@ class QueryConfig(_Section):
     history_turns: int = Field(ge=0)
     expansions: int = Field(ge=0)
     smalltalk_policy: Literal["abstain", "greet"]
+    smalltalk_max_words: int = Field(gt=0)  # the early abstain applies to shorter questions only
     decompose: bool = False
     hyde: bool = False
     model: str
+    prompt_file: Path
+    temperature: float = Field(ge=0, le=2)
+    max_output_tokens: int = Field(gt=0)
+    reasoning_effort: Literal["low", "medium", "high"] | None = None  # reasoning models only
+    retry_backoff_s: float = Field(ge=0)  # pause before the one retry
+    max_standalone_words: int = Field(gt=0)  # a longer rewrite is an answer, not a question
+    keep_question_symbols: bool = True  # drop a paraphrase that loses a php_symbol of the question
+
+
+class SessionConfig(_Section):
+    """The session store (issue #27, Part 1): one row per finished turn, read by Stage 11."""
+
+    store_path: Path
+    ttl_hours: float = Field(gt=0)  # a session expires this long after its last turn
+    answer_excerpt_chars: int = Field(gt=0)
 
 
 class RetrievalConfig(_Section):
@@ -280,6 +296,7 @@ class Settings(_Section):
     cli: CliConfig
     guard: GuardConfig
     query: QueryConfig
+    session: SessionConfig
     retrieval: RetrievalConfig
     rerank: RerankConfig
     gate: GateConfig
