@@ -436,10 +436,14 @@ def retrieve_hybrid(
     cache: EmbeddingCache | None = None,
     collection: str | None = None,
 ) -> list[Candidate]:
-    """The fused top `retrieval.top_k_fused` candidates for one request, plus code siblings."""
+    """The fused top `retrieval.top_k_fused` candidates for one request, plus code siblings.
+    With `retrieval.sparse_enabled: false` only the dense lists are fused (the Milestone 3
+    pipeline, issue #28)."""
     client = client or qdrant_client(settings)
     embedder = embedder or get_embeddings(settings)
-    sparse = sparse or get_sparse_embeddings(settings)
+    sparse = sparse or (
+        get_sparse_embeddings(settings) if settings.retrieval.sparse_enabled else None
+    )
     target = collection or settings.index.alias
     dense = retrieve_dense_lists(
         variants.dense_queries,
@@ -450,14 +454,16 @@ def retrieve_hybrid(
         cache=cache,
         collection=target,
     )
-    sparse_lists = retrieve_sparse_lists(
-        variants.sparse_queries,
-        settings,
-        filters=filters,
-        client=client,
-        sparse=sparse,
-        collection=target,
-    )
+    sparse_lists: list[ResultList] = []
+    if settings.retrieval.sparse_enabled:
+        sparse_lists = retrieve_sparse_lists(
+            variants.sparse_queries,
+            settings,
+            filters=filters,
+            client=client,
+            sparse=sparse,
+            collection=target,
+        )
     fused = fuse(
         [*dense, *sparse_lists],
         rrf_k=settings.retrieval.rrf_k,
@@ -470,7 +476,9 @@ def retrieve_hybrid(
     span.set_attribute("rag.n_sparse_hits", sum(len(lst.hits) for lst in sparse_lists))
     span.set_attribute("rag.n_fused", len(candidates))
     span.set_attribute("rag.n_siblings_added", added)
-    span.set_attribute("rag.overlap_ratio", overlap_ratio(fused))
+    span.set_attribute("rag.sparse_enabled", settings.retrieval.sparse_enabled)
+    if settings.retrieval.sparse_enabled:  # no sparse list, no overlap to report
+        span.set_attribute("rag.overlap_ratio", overlap_ratio(fused))
     span.set_attribute("rag.top_fused_score", fused[0].fused_score if fused else 0.0)
     span.set_attribute("rag.collection", target)
     record_documents(candidates)

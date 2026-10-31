@@ -167,6 +167,7 @@ class GuardConfig(_Section):
 
 
 class QueryConfig(_Section):
+    enabled: bool = True  # false: Stage 11 passes the raw question through (Milestone 3)
     history_turns: int = Field(ge=0)
     expansions: int = Field(ge=0)
     smalltalk_policy: Literal["abstain", "greet"]
@@ -192,6 +193,7 @@ class SessionConfig(_Section):
 
 
 class RetrievalConfig(_Section):
+    sparse_enabled: bool = True  # false: dense lists only, no BM25 (Milestone 3)
     top_k_dense: int = Field(gt=0)
     top_k_sparse: int = Field(gt=0)
     rrf_k: int = Field(gt=0)
@@ -199,6 +201,7 @@ class RetrievalConfig(_Section):
 
 
 class RerankConfig(_Section):
+    enabled: bool = True  # false: the dense cosine stands in for the score (Milestone 3 stub)
     model: str
     top_n: int = Field(gt=0)
     batch_size: int = Field(gt=0)

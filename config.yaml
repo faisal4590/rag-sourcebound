@@ -93,6 +93,7 @@ guard:
   language_min_confidence: 0.3 # below this the text is mostly code; assumed English
 
 query:
+  enabled: true                  # false: the raw question is the only variant (the Milestone 3 pipeline, issue #28)
   history_turns: 3
   expansions: 3
   smalltalk_policy: abstain      # abstain | greet
@@ -114,12 +115,14 @@ session:
   answer_excerpt_chars: 300      # of the answer, kept with the turn for the rewrite
 
 retrieval:
+  sparse_enabled: true           # false: dense search only (Milestone 3)
   top_k_dense: 30
   top_k_sparse: 30
   rrf_k: 60
   top_k_fused: 30
 
 rerank:
+  enabled: true                  # false: the dense cosine stands in for the score (the Milestone 3 stub)
   model: BAAI/bge-reranker-v2-m3
   top_n: 8
   batch_size: 16

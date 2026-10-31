@@ -26,6 +26,9 @@ class AskRequest(BaseModel):
     filters: FiltersIn | None = None
     stream: bool = False
     debug: bool = False
+    # A label for a batch of requests (issue #28), read only with `debug: true`; never a
+    # session id, which would turn the batch into one conversation.
+    run_tag: str | None = Field(default=None, min_length=1, max_length=64)
 
 
 class FeedbackRequest(BaseModel):

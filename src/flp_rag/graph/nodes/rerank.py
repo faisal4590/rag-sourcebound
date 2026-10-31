@@ -159,6 +159,30 @@ def rerank(
     return RerankResult(ordered[: cfg.top_n], scored, truncated, swaps)
 
 
+# --------------------------------------------------------------------------- Milestone 3 stub
+
+
+def stub_scores(candidates: Sequence[Candidate], top_n: int) -> list[Candidate]:
+    """`rerank.enabled: false` (issue #28): the dense cosine clamped to 0..1 stands in for the
+    reranker score, as the Milestone 3 stub did; a candidate without a dense score (sparse
+    only) falls back to its fused score. Sorted by that score, then chunk id; the first
+    `top_n` go on."""
+    scored = [
+        replace(
+            c,
+            rerank_score=min(1.0, max(0.0, float(c.scores.get("dense", c.fused_score)))),
+        )
+        for c in candidates
+    ]
+    scored.sort(key=lambda c: (-_score(c), c.chunk_id))
+    return scored[:top_n]
+
+
+def debug_top(kept: Sequence[Candidate]) -> list[dict[str, Any]]:
+    """The kept list for the response debug field: the rank of a chapter is read from it."""
+    return [{"chunk_id": c.chunk_id, "chapter_no": _chapter(c), "score": _score(c)} for c in kept]
+
+
 # --------------------------------------------------------------------------- node
 
 
@@ -184,10 +208,23 @@ def make_rerank(
         hint = standalone.chapter_hint if standalone else None
         span = current_span()
         span.set_attribute("rag.n_in", len(candidates))
+        span.set_attribute("rag.rerank_enabled", settings.rerank.enabled)
         if not candidates:  # no model call; the gate abstains with gate.no_candidates
             span.set_attribute("rag.n_out", 0)
             span.set_attribute("rag.score_top1", 0.0)
             return {"candidates": []}
+        if not settings.rerank.enabled:
+            kept = stub_scores(candidates, settings.rerank.top_n)
+            top = [_score(c) for c in kept]
+            for key, value in (
+                ("rag.n_out", len(kept)),
+                ("rag.score_top1", top[0]),
+                ("rag.score_top3_mean", sum(top[:3]) / len(top[:3])),
+                ("rag.scores_all", json.dumps([(c.chunk_id, s) for c, s in zip(kept, top)])),
+                ("rag.device", "none"),
+            ):
+                span.set_attribute(key, value)
+            return with_debug(state, {"candidates": kept}, kept)
         if store_path is None:
             raise RuntimeError("reranking needs the parent store; Deps.store_path is not set")
         rr = reranker()
@@ -214,6 +251,13 @@ def make_rerank(
             ("rag.device", getattr(rr, "device", "unknown")),
         ):
             span.set_attribute(key, value)
-        return {"candidates": result.kept}
+        return with_debug(state, {"candidates": result.kept}, result.kept)
+
+    def with_debug(
+        state: RagState, out: dict[str, Any], kept: Sequence[Candidate]
+    ) -> dict[str, Any]:
+        if state.get("debug"):
+            out["debug_info"] = {**state.get("debug_info", {}), "rerank": {"top": debug_top(kept)}}
+        return out
 
     return rerank_node
