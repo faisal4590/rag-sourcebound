@@ -293,6 +293,14 @@ class CalibrationConfig(_Section):
         return self
 
 
+class OnlineLoopConfig(_Section):
+    """The online faithfulness sample of spec 8.7 (issue #36, `eval/online_judge.py`)."""
+
+    hours: float = Field(gt=0)  # the window of traces to sample from
+    sample_share: float = Field(gt=0, le=1)  # spec 8.7 rule 1: 20% of the day's traces
+    seed: int  # the seeded shuffle that picks the sample
+
+
 class EvalConfig(_Section):
     """Milestone 6 harness (issue #34), spec Sections 8.2-8.6."""
 
@@ -314,6 +322,7 @@ class EvalConfig(_Section):
     targets_min: dict[str, float]  # metric >= target
     targets_max: dict[str, float]  # metric <= target
     calibration: CalibrationConfig
+    online: OnlineLoopConfig
 
     @model_validator(mode="after")
     def _targets_disjoint(self) -> "EvalConfig":

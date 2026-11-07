@@ -4,6 +4,8 @@
     make eval                                     # = uv run flp eval
     uv run python eval/harness.py [--api-url URL] [--golden FILE] [--out FILE] [--baseline FILE]
                                   [--no-upload] [--no-judge] [--pause S] [--limit N] [--tag TAG]
+                                  [--update-baseline]
+    uv run python eval/harness.py --baseline-from eval/runs/<run file>.json   # adopt a past run
 
 Every request carries `debug: true`, `judge_all: true` (the Stage 17 faithfulness judge runs
 on every answer), and one `run_tag` for the whole run, `eval.pause_s` apart. Ranks come from the
@@ -17,6 +19,10 @@ going, every response is appended to `eval/runs/<run_tag>.partial.jsonl`, which 
 the run file is written. Exit 1 when a higher-is-better metric dropped by more than
 `eval.regression_tolerance` against `eval/baseline.json` (or the baseline has it and this run
 could not compute it), or when more than `eval.max_error_share` of the requests errored.
+
+The baseline rule (spec 8.6 rule 5, issue #36): after a deliberate improvement, copy the new run
+to `eval/baseline.json` in the same commit. `--update-baseline` does the copy at the end of a
+run that finished with exit code 0; `--baseline-from <run file>` copies a run made earlier.
 """
 
 from __future__ import annotations
@@ -169,6 +175,44 @@ def print_report(
         print(f"REGRESSION {r['metric']}: baseline {r['baseline']:.3f} -> {now}")
 
 
+def update_baseline(
+    run_file: Path, baseline: Path, *, expected_cases: int | None = None
+) -> dict[str, Any]:
+    """Copy a run file over the baseline (spec 8.6 rule 5). Only a complete run qualifies: it
+    has metrics and one row per case, and, when `expected_cases` is given (the golden size), it
+    covers all of them, so a `--limit` run cannot become the baseline. Metrics under their
+    target and error rows are printed, not refused: the rule speaks of a deliberate choice.
+    The copy is written to a temporary file and moved into place, and carries `baseline_from`
+    (relative to the repository when possible) and `baseline_set_at`."""
+    data = json.loads(run_file.read_text())
+    cases = data.get("cases") or []
+    if not data.get("metrics") or not cases:
+        raise ValueError(f"{run_file} is not a complete run file (no metrics or no cases)")
+    if data.get("n_cases") != len(cases):
+        raise ValueError(f"{run_file}: n_cases {data.get('n_cases')} but {len(cases)} case rows")
+    if expected_cases is not None and len(cases) != expected_cases:
+        raise ValueError(f"{run_file} holds {len(cases)} cases, the golden set {expected_cases}")
+    failing = sorted(name for name, m in data["metrics"].items() if m.get("pass") is False)
+    if failing:
+        print(f"note: the new baseline has metrics under target: {', '.join(failing)}")
+    for key in ("error_share", "judge_error_share"):
+        if data.get(key):
+            print(f"note: the new baseline has {key} {data[key]:.0%}")
+    try:
+        origin = str(run_file.resolve().relative_to(ROOT))
+    except ValueError:
+        origin = str(run_file)
+    record = {
+        **data,
+        "baseline_from": origin,
+        "baseline_set_at": datetime.now(UTC).isoformat(timespec="seconds"),
+    }
+    tmp = baseline.with_suffix(".tmp.json")
+    tmp.write_text(json.dumps(record, indent=2) + "\n")
+    tmp.replace(baseline)
+    return record
+
+
 # --------------------------------------------------------------------------- the run
 
 
@@ -219,9 +263,11 @@ def run(
     limit: int | None = None,
     tag: str | None = None,
     transport: httpx.BaseTransport | None = None,
+    update_baseline_after: bool = False,
 ) -> int:
     """Run the harness. `judge=False` skips the correctness judge; `pages_of` and `transport`
-    are the injection points of the tests. Returns the process exit code."""
+    are the injection points of the tests. With `update_baseline_after`, a run that ends with
+    exit code 0 becomes the new baseline. Returns the process exit code."""
     cfg = settings.eval
     root = settings.config_path.parent
     cases = list(read_jsonl(golden, EvalCase))[: limit or None]
@@ -327,7 +373,12 @@ def run(
             f"(limit {cfg.max_error_share:.0%} of the cases)"
         )
         return 1
-    return 1 if regressions else 0
+    if regressions:
+        return 1
+    if update_baseline_after:
+        update_baseline(out_path, baseline_path, expected_cases=len(cases))
+        print(f"baseline updated from this run -> {baseline_path}; commit it with the change")
+    return 0
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -343,9 +394,28 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--pause", type=float, default=None, help="seconds between requests")
     parser.add_argument("--limit", type=int, default=None, help="first N cases only")
     parser.add_argument("--tag", default=None, help="the run_tag; default <prefix>-<timestamp>")
+    parser.add_argument(
+        "--update-baseline", action="store_true", help="a run with exit 0 becomes the baseline"
+    )
+    parser.add_argument(
+        "--baseline-from",
+        type=Path,
+        default=None,
+        help="copy this run file to the baseline (--baseline names the destination) and stop",
+    )
     args = parser.parse_args(argv)
     settings = load_settings()
     root = settings.config_path.parent
+    if args.baseline_from is not None:
+        if args.update_baseline:
+            parser.error("--baseline-from and --update-baseline exclude each other")
+        target = args.baseline or root / settings.eval.baseline_file
+        golden_n = sum(
+            1 for _ in read_jsonl(args.golden or root / settings.eval.golden_file, EvalCase)
+        )
+        update_baseline(args.baseline_from, target, expected_cases=golden_n)
+        print(f"baseline <- {args.baseline_from} ({target})")
+        return 0
     return run(
         settings,
         api_url=args.api_url or settings.cli.api_url,
@@ -357,6 +427,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         pause_s=args.pause,
         limit=args.limit,
         tag=args.tag,
+        update_baseline_after=args.update_baseline,
     )
 
 

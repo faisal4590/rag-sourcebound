@@ -670,3 +670,78 @@ def test_score_cases_counts_judge_failures_and_lets_a_config_error_through() -> 
 
     with pytest.raises(ModelConfigError):
         harness.score_cases(bodies, pages_of, broken, tolerance=1, judge_pause_s=0)
+
+
+def test_update_baseline_copies_a_complete_run_and_refuses_an_incomplete_one(
+    tmp_path: Path,
+) -> None:
+    run = tmp_path / "run.json"
+    run.write_text(
+        json.dumps(
+            {
+                "metrics": {"recall_at_5": {"value": 1.0}},
+                "cases": [{"case_id": "g1"}],
+                "n_cases": 1,
+                "error_share": 0.0,
+            }
+        )
+    )
+    baseline = tmp_path / "baseline.json"
+    record = harness.update_baseline(run, baseline)
+    data = json.loads(baseline.read_text())
+    assert data["metrics"]["recall_at_5"]["value"] == 1.0 and data["baseline_from"] == str(run)
+    assert record["baseline_set_at"] and data["baseline_set_at"]
+    run.write_text(json.dumps({"metrics": {}}))
+    with pytest.raises(ValueError, match="not a complete run file"):
+        harness.update_baseline(run, baseline)
+    run.write_text(json.dumps({"metrics": {"x": {"value": 1}}, "cases": [{}], "n_cases": 3}))
+    with pytest.raises(ValueError, match="n_cases 3 but 1"):
+        harness.update_baseline(run, baseline)
+    run.write_text(json.dumps({"metrics": {"x": {"value": 1}}, "cases": [{}], "n_cases": 1}))
+    with pytest.raises(ValueError, match="holds 1 cases, the golden set 100"):
+        harness.update_baseline(run, baseline, expected_cases=100)
+    assert not list(tmp_path.glob("*.tmp.json"))
+    assert json.loads(baseline.read_text())["metrics"]["recall_at_5"]["value"] == 1.0
+
+
+def test_run_with_update_baseline_sets_the_baseline_only_on_exit_0(tmp_path: Path) -> None:
+    cases = [case("g001"), case("o001", "out_of_domain")]
+    golden = tmp_path / "golden.jsonl"
+    golden.write_text("".join(json.dumps(c.__dict__) + "\n" for c in cases))
+    baseline = tmp_path / "baseline.json"
+    settings = load_settings().model_copy(
+        update={"eval": load_settings().eval.model_copy(update={"runs_dir": tmp_path / "runs"})}
+    )
+    abstain = body(status="no_information", reason="gate.low_top_score", top=[])
+    good = FakeApi({"q g001": body(), "q o001": abstain})
+    code = harness.run(
+        settings,
+        api_url="http://api",
+        golden=golden,
+        out=tmp_path / "run.json",
+        baseline=baseline,
+        pages_of=pages_of,
+        judge=lambda c, a: (2, "ok"),
+        upload=False,
+        pause_s=0,
+        transport=good.transport(),
+        update_baseline_after=True,
+    )
+    assert code == 0 and json.loads(baseline.read_text())["metrics"]["recall_at_5"]["value"] == 1.0
+    worse = FakeApi({"q g001": body(top=["d:6:1"], fused=["d:6:1"]), "q o001": abstain})
+    code = harness.run(
+        settings,
+        api_url="http://api",
+        golden=golden,
+        out=tmp_path / "run2.json",
+        baseline=baseline,
+        pages_of=pages_of,
+        judge=lambda c, a: (2, "ok"),
+        upload=False,
+        pause_s=0,
+        transport=worse.transport(),
+        update_baseline_after=True,
+    )
+    assert code == 1 and json.loads(baseline.read_text())["baseline_from"] == str(
+        tmp_path / "run.json"
+    )

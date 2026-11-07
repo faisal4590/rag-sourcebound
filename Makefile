@@ -48,3 +48,6 @@ test:          ## run the "Done when" tests
 
 calibrate:     ## threshold sweep of spec 8.4, dry run; write with `flp calibrate --local --write`
 	uv run flp calibrate --local
+
+online-judge:  ## spec 8.7: judge a 20% sample of the last day's answers, annotate the traces
+	uv run python eval/online_judge.py
