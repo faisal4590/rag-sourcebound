@@ -160,5 +160,39 @@ def test_eval_case_carries_evidence_kind_and_chapter_and_loads_the_golden_file()
     assert legacy.evidence_quotes == [] and legacy.kind == "" and legacy.chapter_no is None
     golden = Path(__file__).resolve().parents[1] / "eval" / "golden_v1.jsonl"
     cases = list(c.read_jsonl(golden, c.EvalCase))
-    assert len(cases) == 30 and all(case.evidence_quotes and case.kind and case.chapter_no for case in cases)
-    assert sorted({case.kind for case in cases}) == ["code", "comparison", "definition", "how-to"]
+    answerable = [case for case in cases if case.group == "answerable"]
+    assert len(answerable) == 60
+    assert all(case.evidence_quotes and case.kind and case.chapter_no for case in answerable)
+    assert sorted({case.kind for case in answerable}) == ["code", "comparison", "definition", "how-to"]
+
+
+def test_golden_v1_has_100_cases_in_the_spec_composition() -> None:
+    """Issue #33, spec 8.1: 60 answerable (at least one per chapter, every kind present, every
+    case with evidence quotes and pages), 20 in-domain unanswerable, 20 out-of-domain (both
+    with `expected_abstain`, no pages, no chapter), unique ids, one golden version."""
+    from collections import Counter
+    from pathlib import Path
+
+    golden = Path(__file__).resolve().parents[1] / "eval" / "golden_v1.jsonl"
+    cases = list(c.read_jsonl(golden, c.EvalCase))
+    assert len(cases) == 100 and len({case.case_id for case in cases}) == 100
+    assert {case.golden_version for case in cases} == {"v1"}
+    groups = Counter(case.group for case in cases)
+    assert groups == {"answerable": 60, "in_domain_unanswerable": 20, "out_of_domain": 20}
+    answerable = [case for case in cases if case.group == "answerable"]
+    assert all(
+        case.evidence_quotes and case.kind and case.chapter_no and case.expected_pages_printed
+        and case.expected_answer and not case.expected_abstain
+        for case in answerable
+    )
+    assert sorted({case.kind for case in answerable}) == ["code", "comparison", "definition", "how-to"]
+    assert all(case.expected_symbol for case in answerable if case.kind == "code")
+    assert Counter(case.chapter_no for case in answerable) == {n: 2 for n in range(1, 31)}
+    abstaining = [case for case in cases if case.group != "answerable"]
+    assert all(
+        case.expected_abstain and not case.expected_pages_printed and case.chapter_no is None
+        and case.expected_answer is None and not case.evidence_quotes
+        for case in abstaining
+    )
+    assert {case.kind for case in abstaining if case.group == "in_domain_unanswerable"} == {"unanswerable"}
+    assert {case.kind for case in abstaining if case.group == "out_of_domain"} == {"offtopic"}

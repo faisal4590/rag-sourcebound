@@ -101,7 +101,7 @@ The hash covers the parse, structure, clean, and chunk config sections plus the 
 Stages 1-5, so any chunker change forces a new index version. Gates: `eval/chunk_checks.py`
 (Level 1, exit 1 on failure), `eval/chunk_retrieval.py` (Level 3: dense and BM25 over the
 parquet vectors against a flat 400/50 splitter baseline, metrics per question kind),
-`eval/chunk_review.md` (Level 2 human read), `eval/golden_v1.jsonl` (30 cases with
+`eval/chunk_review.md` (Level 2 human read), `eval/golden_v1.jsonl` (100 cases since #33, 60 with
 `evidence_quotes`, `kind`, `chapter_no`), report in `eval/reports/`. Rules that now differ from
 the spec are listed in `docs/spec-changes-pending.md`; the spec itself is unchanged. Test
 markers `live` (needs the Qdrant alias on the current index) and `slow` (PyMuPDF glyph oracle)
@@ -136,7 +136,7 @@ change), keeps `rerank.top_n`, and writes `rag.scores_all` (chunk id, score pair
 `reranker.*`, `gen_ai.request.model` on the `rerank` span. Zero candidates: no model call. The
 rerank stub is gone; the gate reads real cross-encoder scores. `eval/rerank_eval.py` (Part 8)
 measures the gain over fusion, the score separation against the gate thresholds, and the
-stage latency on the 30 golden plus 10 off-topic questions (`eval/offtopic_v1.jsonl`).
+stage latency on every golden case (since #33 all 100; before, 30 answerable plus 10 off-topic).
 Measured 2026-10-17 on the M1 Pro (MPS): answerable best scores 0.72-1.00 (median 0.98),
 off-topic 0.001-0.018, so the default gate thresholds hold without recalibration; Recall@3 after
 the reranker 1.0; MRR@10 0.900 (fused) -> 0.872 (rank 1 and 2 swaps); rerank latency about 5-10 s
@@ -340,7 +340,10 @@ The only model-derived files in git are the two glyph tables under `src/flp_rag/
 ## Evaluation
 
 - `eval/golden_v1.jsonl`: target 100 cases (60 answerable, 20 in-domain unanswerable, 20
-  out-of-domain). Currently 7 example cases. `eval/smoke_queries.jsonl`: 10 queries used by Stage 8.
+  out-of-domain). Complete since issue #33: 60 answerable (two per chapter; kinds definition,
+  code, comparison, how-to; every case with exact `evidence_quotes` and the printed page of the
+  quote), 20 in-domain unanswerable (`kind` `unanswerable`, each key term verified absent from
+  `data/clean/`), 20 out-of-domain (`kind` `offtopic`; `eval/offtopic_v1.jsonl` is folded in). `eval/smoke_queries.jsonl`: 10 queries used by Stage 8.
 - `eval/baseline.json` is empty (`{}`). Create it after the first full run (Milestone 6).
 - Targets: Recall@5 >= 0.85, Abstain F1 >= 0.90, Faithfulness >= 0.95, Citation accuracy >= 0.90,
   p95 latency <= 6 s, cost <= USD 0.02 per answered question, trace coverage 100%.

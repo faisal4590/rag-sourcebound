@@ -1,8 +1,10 @@
 # Part 8 of issue #26: reranker gain over fusion, score separation for the gate, and latency.
 """Measure Stage 13 on the live index.
 
-Two question sets: the 30 answerable golden questions and 10 off-topic questions
-(`eval/offtopic_v1.jsonl`). For every question: hybrid retrieval, then the reranker.
+All 100 golden cases (issue #33): 60 answerable, 20 in-domain unanswerable, 20 out-of-domain.
+For every question: hybrid retrieval, then the reranker. The 40 abstain cases are reported per
+group: out-of-domain best scores should sit under `gate.tau_low`; in-domain unanswerable ones
+abstain through `gate.no_passing_chunk`, so the check for them is `gate.tau_pass`.
 
 Reports MRR@10 after fusion against MRR@10 after the reranker, Recall@8 (only 8 candidates go
 on), the best reranker score per question against the gate thresholds (answerable should sit
@@ -38,7 +40,6 @@ from chunk_retrieval import mrr_at, recall_at
 
 ROOT = Path(__file__).resolve().parents[1]
 GOLDEN = ROOT / "eval" / "golden_v1.jsonl"
-OFFTOPIC = ROOT / "eval" / "offtopic_v1.jsonl"
 
 
 def hit_rank(
@@ -82,6 +83,7 @@ def run_case(case: EvalCase, settings: Settings, deps: Any, store: ParentStore) 
     }
     return {
         "case_id": case.case_id,
+        "group": case.group,
         "kind": case.kind,
         "abstain": case.expected_abstain,
         "rank_fused": hit_rank(fused, texts, case.evidence_quotes)
@@ -104,6 +106,10 @@ def report(rows: Sequence[dict[str, Any]], settings: Settings, device: str) -> d
     reranked = [row["rank_reranked"] for row in answerable]
     best_on = [row["score_top1"] for row in answerable]
     best_off = [row["score_top1"] for row in offtopic]
+    by_group = {
+        group: [row["score_top1"] for row in offtopic if row.get("group") == group]
+        for group in ("in_domain_unanswerable", "out_of_domain")
+    }
     latencies = [row["latency_ms"] for row in rows]
     return {
         "n_answerable": len(answerable),
@@ -126,6 +132,17 @@ def report(rows: Sequence[dict[str, Any]], settings: Settings, device: str) -> d
             "median": statistics.median(best_off) if best_off else 0.0,
             "max": max(best_off, default=0.0),
             "below_tau_low": sum(1 for s in best_off if s < gate.tau_low),
+            "below_tau_pass": sum(1 for s in best_off if s < gate.tau_pass),
+        },
+        "score_top1_abstain_by_group": {
+            group: {
+                "n": len(scores),
+                "max": max(scores, default=0.0),
+                "median": statistics.median(scores) if scores else 0.0,
+                "below_tau_low": sum(1 for x in scores if x < gate.tau_low),
+                "below_tau_pass": sum(1 for x in scores if x < gate.tau_pass),
+            }
+            for group, scores in by_group.items()
         },
         "thresholds": {
             "tau_low": gate.tau_low,
@@ -158,6 +175,11 @@ def print_table(rep: dict[str, Any]) -> None:
     print(
         f"best score, off-topic:  min {off['min']:.3f} median {off['median']:.3f} max {off['max']:.3f}; {off['below_tau_low']}/{rep['n_offtopic']} below tau_low {t['tau_low']}"
     )
+    for group, g in rep["score_top1_abstain_by_group"].items():
+        print(
+            f"  {group}: n {g['n']} max {g['max']:.3f} median {g['median']:.3f}; "
+            f"{g['below_tau_low']} below tau_low, {g['below_tau_pass']} below tau_pass"
+        )
     lat = rep["latency_ms"]
     print(
         f"rerank latency ms over all {n} questions: p50 {lat['p50']:.0f} p95 {lat['p95']:.0f} max {lat['max']:.0f}; truncated pairs {rep['n_truncated_total']}"
@@ -170,7 +192,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     settings = load_settings()
     tracing.configure_tracing(settings)
-    cases = [*read_jsonl(GOLDEN, EvalCase), *read_jsonl(OFFTOPIC, EvalCase)]
+    cases = list(read_jsonl(GOLDEN, EvalCase))
     deps = build_deps(settings)
     version, _ = current_index_version(settings, deps)
     store_path = default_index_dir(settings) / str(version) / STORE_FILE
