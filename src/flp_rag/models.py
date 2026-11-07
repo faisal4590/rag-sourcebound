@@ -298,6 +298,20 @@ def pick_device(requested: str) -> str:
     return "cpu"
 
 
+def position_limit(tokenizer: Any, model: Any) -> int | None:
+    """The longest pair the model accepts: the smaller of the tokenizer's `model_max_length`
+    and the model's `max_position_embeddings`. Some tokenizers report a huge sentinel instead
+    of a limit; the model config then decides. None when neither says."""
+    limits: list[int] = []
+    for value in (
+        getattr(tokenizer, "model_max_length", None),
+        getattr(getattr(model, "config", None), "max_position_embeddings", None),
+    ):
+        if isinstance(value, int | float) and math.isfinite(value):
+            limits.append(int(value))
+    return min(limits) if limits else None
+
+
 class BgeReranker:
     """Local cross-encoder. The raw model output is a logit; one sigmoid maps it to [0, 1],
     applied here and nowhere else (issue #26, Part 3). Loads once, under a lock, on the device
@@ -333,11 +347,17 @@ class BgeReranker:
                 import torch
                 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-                self._device = pick_device(self.requested_device)
-                self._tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+                tokenizer = AutoTokenizer.from_pretrained(self.model_name)
                 model = AutoModelForSequenceClassification.from_pretrained(self.model_name)
-                self._model = model.to(self._device).eval()
-                self._torch = torch
+                limit = position_limit(tokenizer, model)
+                if limit is not None and self.max_length > limit:
+                    raise ModelConfigError(
+                        f"rerank.max_length {self.max_length} exceeds the {limit} positions of "
+                        f"{self.model_name}; lower it in config.yaml"
+                    )
+                device = pick_device(self.requested_device)
+                self._model = model.to(device).eval()
+                self._tokenizer, self._torch, self._device = tokenizer, torch, device
             return self._tokenizer, self._model
 
     def warm_up(self) -> None:

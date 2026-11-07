@@ -123,10 +123,10 @@ retrieval:
 
 rerank:
   enabled: true                  # false: the dense cosine stands in for the score (the Milestone 3 stub)
-  model: BAAI/bge-reranker-v2-m3
+  model: BAAI/bge-reranker-base  # 278M params, 512 positions; v2-m3 (568M) was 4.6x slower (#76)
   top_n: 8
   batch_size: 16
-  max_length: 1024               # reranker tokens per pair; no chunk of this book is cut (issue #26)
+  max_length: 512                # the model's limit; pairs over it are cut (305 of 1,200 in Part 8)
   device: auto                   # cuda, then mps, then cpu
   hint_margin: 0.01              # two neighbors closer than this may swap on the chapter hint
 

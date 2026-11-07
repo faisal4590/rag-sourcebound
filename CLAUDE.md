@@ -141,8 +141,14 @@ Measured 2026-10-17 on the M1 Pro (MPS): answerable best scores 0.72-1.00 (media
 off-topic 0.001-0.018, so the default gate thresholds hold without recalibration; Recall@3 after
 the reranker 1.0; MRR@10 0.900 (fused) -> 0.872 (rank 1 and 2 swaps); rerank latency about 5-10 s
 per request for 30 pairs of 300-700 tokens, far over the 1.5 s budget and the cause of 20 s API
-timeouts. Open decision: fewer candidates (`retrieval.top_k_fused` 20), `rerank.max_length` 512,
-a smaller reranker (`BAAI/bge-reranker-base`), or a longer `api.timeout_s`. Stage 11 query
+timeouts. Decided 2026-11-07 (#76): the reranker is `BAAI/bge-reranker-base` with
+`rerank.max_length` 512 (the model's limit; `BgeReranker` refuses a larger value at load with
+`ModelConfigError`). Same 40 questions, same machine: rerank p50 1.3 s (v2-m3 at 1024: 6.1 s,
+at 512: 4.1 s), MRR@10 0.911 (26 rank-1 against 23), Recall@3 0.933 (g012 and g022 drop to
+rank 4, both still in the top 8 and in the context), Recall@8 1.0, answerable best scores
+0.40-1.00 (two in the borderline zone, g022 and g024, so the judge runs for them), off-topic
+at most 0.001. `eval/rerank_eval.py --rerank-model/--max-length/--top-k-fused` trial a setting
+without editing `config.yaml`; reports in `eval/runs/rerank_20261107_*.json`. Stage 11 query
 understanding (#27) done: `graph/nodes/understand.py`, `understand(question, history, chat=,
 prompt=, facts=, settings=)` makes one small-model call (`query.model`, `query.prompt_file` =
 `prompts/query_v1.md` split at `Chapters:` into system and user parts, `QUERY_SCHEMA`,
@@ -265,7 +271,7 @@ so one stage can be rerun without the PDF.
 
 **Query** (a LangGraph `StateGraph` in `graph/build.py`, one node per stage in `graph/nodes/`):
 `guard_input` (10) -> `understand` (11) -> `retrieve` (12, hybrid dense + sparse, RRF k=60) ->
-`rerank` (13, bge-reranker-v2-m3, top 8) -> `gate` (14, conditional edge: `pass` or `abstain`) ->
+`rerank` (13, bge-reranker-base, top 8) -> `gate` (14, conditional edge: `pass` or `abstain`) ->
 `assemble` (15, parents, `[S1]` labels, 6000-token budget, book order) -> `generate` (16) ->
 `check_output` (17, citations, faithfulness judge, code verbatim) -> `respond` (18).
 `graph/cache.py` is Stage 19 (Milestone 7). `graph/state.py` holds `RagState`.
@@ -289,7 +295,7 @@ regardless of what LangChain auto-instrumentation emits. Stages 6 and 7 live in 
 |---|---|
 | Embedding | `BAAI/bge-m3`, 1024 dims, local CPU, batch 32, SQLite cache |
 | Sparse | `Qdrant/bm25` via fastembed |
-| Reranker | `BAAI/bge-reranker-v2-m3`, sigmoid to 0-1, top 8 |
+| Reranker | `BAAI/bge-reranker-base`, `max_length` 512, sigmoid to 0-1, top 8 |
 | Gate thresholds | `tau_low 0.20`, `tau_pass 0.35`, `tau_high 0.60` (recalibrate per spec 8.4) |
 | Chunks | target 350 tokens, min 120, max 600, code max 900, `cl100k_base` |
 | Generator | `groq:openai/gpt-oss-120b`, temperature 0, `max_output_tokens 2000`, `reasoning_effort low`, `prompts/answer_v1.md` |
@@ -316,7 +322,7 @@ user-level cache and reuse it afterwards. A fresh clone fetches them on the firs
 | Model | Used by | Cache path | Size |
 |---|---|---|---|
 | `BAAI/bge-m3` | `BgeM3Embedder`, dense vectors | `~/.cache/huggingface/hub/models--BAAI--bge-m3` | about 4 GB |
-| `BAAI/bge-reranker-v2-m3` | `BgeReranker`, Stage 13 | `~/.cache/huggingface/hub/models--BAAI--bge-reranker-v2-m3` | about 2 GB |
+| `BAAI/bge-reranker-base` | `BgeReranker`, Stage 13 | `~/.cache/huggingface/hub/models--BAAI--bge-reranker-base` | about 1.1 GB |
 | `Qdrant/bm25` | `FastembedSparse`, sparse vectors | `$TMPDIR/fastembed_cache/models--Qdrant--bm25` | under 1 MB |
 
 Set `HF_HOME` to move the Hugging Face cache. Set `FASTEMBED_CACHE_PATH` to move the fastembed

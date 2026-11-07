@@ -363,7 +363,7 @@ def test_health_reports_index_version_models_and_backends(
     assert body["index_version"] == version and body["collection"] == f"flp_chunks_{version}"
     assert (
         body["models"]["embed"] == "BAAI/bge-m3"
-        and body["models"]["rerank"] == "BAAI/bge-reranker-v2-m3"
+        and body["models"]["rerank"] == "BAAI/bge-reranker-base"
     )
     assert body["backends"]["qdrant"] is True and isinstance(body["backends"]["phoenix"], bool)
     expected = "ok" if body["backends"]["phoenix"] else "degraded"

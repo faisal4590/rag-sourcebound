@@ -244,7 +244,7 @@ def test_hint_is_a_tie_breaker_in_the_node_not_a_filter(settings, store_path) ->
 def test_bge_reranker_reads_its_settings_and_picks_a_device(settings) -> None:
     rr = m.get_reranker(settings)
     assert isinstance(rr, m.BgeReranker)
-    assert rr.max_length == settings.rerank.max_length == 1024 and rr.batch_size == 16
+    assert rr.max_length == settings.rerank.max_length == 512 and rr.batch_size == 16
     assert rr.requested_device == "auto" and rr.device == "auto"  # resolved at load, not here
     assert m.pick_device("cpu") == "cpu" and m.pick_device("auto") in ("cuda", "mps", "cpu")
 
@@ -266,9 +266,9 @@ def test_graph_wires_the_reranker_through_deps(settings, store_path) -> None:
 
 needs_reranker = pytest.mark.skipif(
     not (
-        Path.home() / ".cache" / "huggingface" / "hub" / "models--BAAI--bge-reranker-v2-m3"
+        Path.home() / ".cache" / "huggingface" / "hub" / "models--BAAI--bge-reranker-base"
     ).exists(),
-    reason="bge-reranker-v2-m3 is not in the Hugging Face cache",
+    reason="bge-reranker-base is not in the Hugging Face cache",
 )
 
 

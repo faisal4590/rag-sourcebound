@@ -1,6 +1,6 @@
 """Done-when tests for models.py, the provider factories. Spec Section 4.3. Issue #10.
 
-Local models (bge-m3, bge-reranker-v2-m3, Qdrant/bm25) load from the Hugging Face cache and
+Local models (bge-m3, bge-reranker-base, Qdrant/bm25) load from the Hugging Face cache and
 skip when absent. Chat models are exercised through a fake LangChain model, never the network.
 """
 
@@ -25,7 +25,7 @@ def _cached(repo: str) -> bool:
 
 needs_bge_m3 = pytest.mark.skipif(not _cached("BAAI/bge-m3"), reason="bge-m3 not in the HF cache")
 needs_reranker = pytest.mark.skipif(
-    not _cached("BAAI/bge-reranker-v2-m3"), reason="bge-reranker-v2-m3 not in the HF cache"
+    not _cached("BAAI/bge-reranker-base"), reason="bge-reranker-base not in the HF cache"
 )
 
 
@@ -235,12 +235,52 @@ def test_cohere_reranker_maps_scores_back_to_input_order() -> None:
 
 @needs_reranker
 def test_bge_reranker_scores_relevant_text_higher() -> None:
-    rr = m.BgeReranker("BAAI/bge-reranker-v2-m3", batch_size=16)
+    rr = m.BgeReranker("BAAI/bge-reranker-base", batch_size=16)
     scores = rr.score("How do readonly properties work in PHP?",
                       ["A readonly property can only be initialized once, from inside the class.",
                        "The JIT compiler translates opcodes into machine code at runtime."])
     assert all(0.0 <= s <= 1.0 for s in scores)
     assert scores[0] > scores[1]
+
+
+def test_bge_reranker_rejects_max_length_over_the_model_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`BAAI/bge-reranker-base` takes 512 positions; `max_length: 1024` must fail at load with
+    the two numbers in the message, not crash inside the first forward pass on the device."""
+    pytest.importorskip("torch")
+    transformers = pytest.importorskip("transformers")
+
+    class FakeTokenizer:
+        model_max_length = int(1e30)  # the sentinel some tokenizers report instead of a limit
+
+    class FakeModel:
+        config = SimpleNamespace(max_position_embeddings=514)
+
+        def to(self, device: str) -> "FakeModel":
+            return self
+
+        def eval(self) -> "FakeModel":
+            return self
+
+    monkeypatch.setattr(transformers.AutoTokenizer, "from_pretrained", lambda name: FakeTokenizer())
+    monkeypatch.setattr(
+        transformers.AutoModelForSequenceClassification, "from_pretrained", lambda name: FakeModel()
+    )
+    rr = m.BgeReranker("fake/reranker-base", max_length=1024, device="cpu")
+    with pytest.raises(m.ModelConfigError, match="rerank.max_length 1024 .* 514"):
+        rr.score("q", ["a"])
+    assert rr.device == "cpu"  # the requested device; nothing half-loaded
+    ok = m.BgeReranker("fake/reranker-base", max_length=512, device="cpu")
+    assert ok._load()[1] is not None and ok.device == "cpu"
+
+
+def test_position_limit_reads_tokenizer_and_model_config() -> None:
+    tok = SimpleNamespace(model_max_length=512)
+    model = SimpleNamespace(config=SimpleNamespace(max_position_embeddings=8194))
+    assert m.position_limit(tok, model) == 512
+    assert m.position_limit(SimpleNamespace(model_max_length=float("inf")), model) == 8194
+    assert m.position_limit(SimpleNamespace(), SimpleNamespace()) is None
 
 
 # --------------------------------------------------------------------------- embedders

@@ -163,7 +163,7 @@ Small talk, one request per side (`run_tag` on the root span):
    7.5 s for 30 pairs of 300 to 700 tokens on MPS (#26 measured 5 to 10 s). The decision from
    #26 is still open: `retrieval.top_k_fused: 20`, `rerank.max_length: 512`, a smaller reranker
    (`BAAI/bge-reranker-base`), or a longer `api.timeout_s`. Nothing in the pipeline itself
-   needs a fix for this.
+   needs a fix for this. Decided in #76: `BAAI/bge-reranker-base` at `max_length` 512, 1.3 s.
 6. **Two trace details worth a Milestone 5 fix.** The `retrieval.hybrid` span appears twice per
    request (the node wrapper and the `@stage` decorator on `retrieve_hybrid` share the name).
    The retriever spans record counts and top scores but not the hit ids, so a per-list rank

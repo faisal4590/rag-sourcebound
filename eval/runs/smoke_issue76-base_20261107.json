@@ -1,0 +1,439 @@
+{
+  "tag": "issue76-base",
+  "date": "2026-11-07T12:59:50Z",
+  "api_url": "http://localhost:8000",
+  "repeats": 1,
+  "pause_s": 55.0,
+  "partial": false,
+  "index_version": "v3-bgem3-d4ebab9e",
+  "summary": {
+    "n_requests": 10,
+    "n_answered": 10,
+    "median_elapsed_ms": 4019.5,
+    "median_cost_usd": 0.0,
+    "median_timings_ms": {
+      "context.assemble": 4.0,
+      "guardrails.input": 9.5,
+      "guardrails.output": 2.0,
+      "llm.generate": 998.0,
+      "query.understand": 597.5,
+      "relevance.gate": 0.0,
+      "rerank": 1716.0,
+      "retrieval.hybrid": 54.0
+    },
+    "per_query": [
+      {
+        "question": "What is constructor property promotion?",
+        "expected_chapter": 5,
+        "ranks": [
+          1
+        ],
+        "best_rank": 1,
+        "median_rank": 1.0,
+        "in_top5": 1,
+        "statuses": {
+          "answered": 1
+        },
+        "cited": 1,
+        "trace_ids": [
+          "3762416954526e1c0ca8dcba0769e1d3"
+        ]
+      },
+      {
+        "question": "How do readonly properties work?",
+        "expected_chapter": 6,
+        "ranks": [
+          1
+        ],
+        "best_rank": 1,
+        "median_rank": 1.0,
+        "in_top5": 1,
+        "statuses": {
+          "answered": 1
+        },
+        "cited": 1,
+        "trace_ids": [
+          "161e536d4c87ba2d9d7bc72b1826255c"
+        ]
+      },
+      {
+        "question": "How do I use named arguments?",
+        "expected_chapter": 7,
+        "ranks": [
+          1
+        ],
+        "best_rank": 1,
+        "median_rank": 1.0,
+        "in_top5": 1,
+        "statuses": {
+          "answered": 1
+        },
+        "cited": 1,
+        "trace_ids": [
+          "3b5bc7f2ad7445174d22e78de269fc33"
+        ]
+      },
+      {
+        "question": "How do I define an attribute class?",
+        "expected_chapter": 8,
+        "ranks": [
+          1
+        ],
+        "best_rank": 1,
+        "median_rank": 1.0,
+        "in_top5": 1,
+        "statuses": {
+          "answered": 1
+        },
+        "cited": 1,
+        "trace_ids": [
+          "673e1a5039a01d16ccbe8b22f2b361c9"
+        ]
+      },
+      {
+        "question": "What are backed enums?",
+        "expected_chapter": 9,
+        "ranks": [
+          1
+        ],
+        "best_rank": 1,
+        "median_rank": 1.0,
+        "in_top5": 1,
+        "statuses": {
+          "answered": 1
+        },
+        "cited": 1,
+        "trace_ids": [
+          "74400a1821154ffce3caf1bfe3a224cc"
+        ]
+      },
+      {
+        "question": "What is the difference between match and switch?",
+        "expected_chapter": 13,
+        "ranks": [
+          1
+        ],
+        "best_rank": 1,
+        "median_rank": 1.0,
+        "in_top5": 1,
+        "statuses": {
+          "answered": 1
+        },
+        "cited": 1,
+        "trace_ids": [
+          "cb8606612bd544dd5d8c6dac2bc550ea"
+        ]
+      },
+      {
+        "question": "What does the never return type mean?",
+        "expected_chapter": 3,
+        "ranks": [
+          1
+        ],
+        "best_rank": 1,
+        "median_rank": 1.0,
+        "in_top5": 1,
+        "statuses": {
+          "answered": 1
+        },
+        "cited": 1,
+        "trace_ids": [
+          "7a41e188878ca0e3203afaf657267abe"
+        ]
+      },
+      {
+        "question": "How does the JIT compiler work in PHP 8?",
+        "expected_chapter": 21,
+        "ranks": [
+          2
+        ],
+        "best_rank": 2,
+        "median_rank": 2.0,
+        "in_top5": 1,
+        "statuses": {
+          "answered": 1
+        },
+        "cited": 1,
+        "trace_ids": [
+          "82541e991c689fbfacfb3948b5517975"
+        ]
+      },
+      {
+        "question": "What are fibers?",
+        "expected_chapter": 27,
+        "ranks": [
+          1
+        ],
+        "best_rank": 1,
+        "median_rank": 1.0,
+        "in_top5": 1,
+        "statuses": {
+          "answered": 1
+        },
+        "cited": 1,
+        "trace_ids": [
+          "95f248502a7d5c6495bd3a6b60e25527"
+        ]
+      },
+      {
+        "question": "What is new in PHP 8.2?",
+        "expected_chapter": 30,
+        "ranks": [
+          1
+        ],
+        "best_rank": 1,
+        "median_rank": 1.0,
+        "in_top5": 1,
+        "statuses": {
+          "answered": 1
+        },
+        "cited": 1,
+        "trace_ids": [
+          "1e4c42939f3aa5b2738fb6e87ecfb1bf"
+        ]
+      }
+    ]
+  },
+  "rows": [
+    {
+      "question": "What is constructor property promotion?",
+      "expected_chapter": 5,
+      "repeat": 1,
+      "status": "answered",
+      "abstain_reason": null,
+      "rank": 1,
+      "cited": true,
+      "timings_ms": {
+        "guardrails.input": 0,
+        "query.understand": 565,
+        "retrieval.hybrid": 58,
+        "rerank": 1413,
+        "relevance.gate": 0,
+        "context.assemble": 6,
+        "llm.generate": 1248,
+        "guardrails.output": 3
+      },
+      "elapsed_ms": 3339,
+      "cost_usd": 0.0,
+      "trace_id": "3762416954526e1c0ca8dcba0769e1d3",
+      "index_version": "v3-bgem3-d4ebab9e",
+      "detail": null
+    },
+    {
+      "question": "How do readonly properties work?",
+      "expected_chapter": 6,
+      "repeat": 1,
+      "status": "answered",
+      "abstain_reason": null,
+      "rank": 1,
+      "cited": true,
+      "timings_ms": {
+        "guardrails.input": 13,
+        "query.understand": 598,
+        "retrieval.hybrid": 12226,
+        "rerank": 1684,
+        "relevance.gate": 0,
+        "context.assemble": 4,
+        "llm.generate": 1576,
+        "guardrails.output": 884
+      },
+      "elapsed_ms": 17020,
+      "cost_usd": 0.0,
+      "trace_id": "161e536d4c87ba2d9d7bc72b1826255c",
+      "index_version": "v3-bgem3-d4ebab9e",
+      "detail": null
+    },
+    {
+      "question": "How do I use named arguments?",
+      "expected_chapter": 7,
+      "repeat": 1,
+      "status": "answered",
+      "abstain_reason": null,
+      "rank": 1,
+      "cited": true,
+      "timings_ms": {
+        "guardrails.input": 17,
+        "query.understand": 358,
+        "retrieval.hybrid": 50,
+        "rerank": 1412,
+        "relevance.gate": 0,
+        "context.assemble": 3,
+        "llm.generate": 866,
+        "guardrails.output": 2
+      },
+      "elapsed_ms": 2763,
+      "cost_usd": 0.0,
+      "trace_id": "3b5bc7f2ad7445174d22e78de269fc33",
+      "index_version": "v3-bgem3-d4ebab9e",
+      "detail": null
+    },
+    {
+      "question": "How do I define an attribute class?",
+      "expected_chapter": 8,
+      "repeat": 1,
+      "status": "answered",
+      "abstain_reason": null,
+      "rank": 1,
+      "cited": true,
+      "timings_ms": {
+        "guardrails.input": 19,
+        "query.understand": 321,
+        "retrieval.hybrid": 45,
+        "rerank": 1560,
+        "relevance.gate": 0,
+        "context.assemble": 4,
+        "llm.generate": 891,
+        "guardrails.output": 771
+      },
+      "elapsed_ms": 3654,
+      "cost_usd": 0.0,
+      "trace_id": "673e1a5039a01d16ccbe8b22f2b361c9",
+      "index_version": "v3-bgem3-d4ebab9e",
+      "detail": null
+    },
+    {
+      "question": "What are backed enums?",
+      "expected_chapter": 9,
+      "repeat": 1,
+      "status": "answered",
+      "abstain_reason": null,
+      "rank": 1,
+      "cited": true,
+      "timings_ms": {
+        "guardrails.input": 10,
+        "query.understand": 1945,
+        "retrieval.hybrid": 33,
+        "rerank": 1467,
+        "relevance.gate": 0,
+        "context.assemble": 3,
+        "llm.generate": 704,
+        "guardrails.output": 1
+      },
+      "elapsed_ms": 4208,
+      "cost_usd": 0.0,
+      "trace_id": "74400a1821154ffce3caf1bfe3a224cc",
+      "index_version": "v3-bgem3-d4ebab9e",
+      "detail": null
+    },
+    {
+      "question": "What is the difference between match and switch?",
+      "expected_chapter": 13,
+      "repeat": 1,
+      "status": "answered",
+      "abstain_reason": null,
+      "rank": 1,
+      "cited": true,
+      "timings_ms": {
+        "guardrails.input": 16,
+        "query.understand": 597,
+        "retrieval.hybrid": 48,
+        "rerank": 2136,
+        "relevance.gate": 0,
+        "context.assemble": 4,
+        "llm.generate": 1033,
+        "guardrails.output": 1
+      },
+      "elapsed_ms": 3878,
+      "cost_usd": 0.0,
+      "trace_id": "cb8606612bd544dd5d8c6dac2bc550ea",
+      "index_version": "v3-bgem3-d4ebab9e",
+      "detail": null
+    },
+    {
+      "question": "What does the never return type mean?",
+      "expected_chapter": 3,
+      "repeat": 1,
+      "status": "answered",
+      "abstain_reason": null,
+      "rank": 1,
+      "cited": true,
+      "timings_ms": {
+        "guardrails.input": 8,
+        "query.understand": 3069,
+        "retrieval.hybrid": 27,
+        "rerank": 2171,
+        "relevance.gate": 0,
+        "context.assemble": 4,
+        "llm.generate": 1397,
+        "guardrails.output": 628
+      },
+      "elapsed_ms": 7356,
+      "cost_usd": 0.0,
+      "trace_id": "7a41e188878ca0e3203afaf657267abe",
+      "index_version": "v3-bgem3-d4ebab9e",
+      "detail": null
+    },
+    {
+      "question": "How does the JIT compiler work in PHP 8?",
+      "expected_chapter": 21,
+      "repeat": 1,
+      "status": "answered",
+      "abstain_reason": null,
+      "rank": 2,
+      "cited": true,
+      "timings_ms": {
+        "guardrails.input": 9,
+        "query.understand": 649,
+        "retrieval.hybrid": 1431,
+        "rerank": 1748,
+        "relevance.gate": 0,
+        "context.assemble": 5,
+        "llm.generate": 963,
+        "guardrails.output": 1
+      },
+      "elapsed_ms": 4885,
+      "cost_usd": 0.0,
+      "trace_id": "82541e991c689fbfacfb3948b5517975",
+      "index_version": "v3-bgem3-d4ebab9e",
+      "detail": null
+    },
+    {
+      "question": "What are fibers?",
+      "expected_chapter": 27,
+      "repeat": 1,
+      "status": "answered",
+      "abstain_reason": null,
+      "rank": 1,
+      "cited": true,
+      "timings_ms": {
+        "guardrails.input": 0,
+        "query.understand": 632,
+        "retrieval.hybrid": 59,
+        "rerank": 2345,
+        "relevance.gate": 0,
+        "context.assemble": 4,
+        "llm.generate": 578,
+        "guardrails.output": 0
+      },
+      "elapsed_ms": 3680,
+      "cost_usd": 0.0,
+      "trace_id": "95f248502a7d5c6495bd3a6b60e25527",
+      "index_version": "v3-bgem3-d4ebab9e",
+      "detail": null
+    },
+    {
+      "question": "What is new in PHP 8.2?",
+      "expected_chapter": 30,
+      "repeat": 1,
+      "status": "answered",
+      "abstain_reason": null,
+      "rank": 1,
+      "cited": true,
+      "timings_ms": {
+        "guardrails.input": 4,
+        "query.understand": 442,
+        "retrieval.hybrid": 61,
+        "rerank": 2355,
+        "relevance.gate": 0,
+        "context.assemble": 10,
+        "llm.generate": 1228,
+        "guardrails.output": 2
+      },
+      "elapsed_ms": 4161,
+      "cost_usd": 0.0,
+      "trace_id": "1e4c42939f3aa5b2738fb6e87ecfb1bf",
+      "index_version": "v3-bgem3-d4ebab9e",
+      "detail": null
+    }
+  ]
+}

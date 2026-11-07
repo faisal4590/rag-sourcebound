@@ -433,7 +433,7 @@ def test_index_the_real_book_into_the_live_qdrant(tmp_path: Path) -> None:
         assert s6.alias_target(client, settings.index.alias) != result.collection
         manifest = json.loads(result.manifest_path.read_text())
         assert manifest["models"] == {"embed_model": "BAAI/bge-m3", "embed_dim": 1024,
-                                      "sparse_model": "Qdrant/bm25", "rerank_model": "BAAI/bge-reranker-v2-m3"}
+                                      "sparse_model": "Qdrant/bm25", "rerank_model": "BAAI/bge-reranker-base"}
         assert manifest["index_version"] == test_version
         # Dense query straight against the new collection: the readonly chapter comes back.
         from flp_rag.models import get_embeddings
