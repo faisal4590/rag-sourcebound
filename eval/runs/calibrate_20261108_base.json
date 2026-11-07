@@ -1,5 +1,5 @@
 {
-  "calibrated_at": "2026-11-07T18:08:06+00:00",
+  "calibrated_at": "2026-11-07T18:24:53+00:00",
   "source": "local: hybrid retrieval + reranker on the live index, raw question",
   "reranker": "BAAI/bge-reranker-base",
   "n_cases": 100,
@@ -7,10 +7,10 @@
   "chosen": {
     "tau_low": 0.3,
     "tau_pass": 0.35,
-    "tau_high": 0.986,
+    "tau_high": 0.6542,
     "f1": 0.9629629629629629,
     "clamped": true,
-    "borderline_share": 0.4827586206896552,
+    "borderline_share": 0.06896551724137931,
     "ordered": true
   },
   "sweep": [

@@ -12,13 +12,16 @@ from typing import Any
 
 import pytest
 
-from flp_rag.settings import load_settings
+from flp_rag.settings import CalibrationConfig, load_settings
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "eval"))
 import calibrate
 
-CFG = load_settings().eval.calibration
+# the spec's own grid and percentiles; the shipped `eval.calibration` may differ (issue #35)
+CFG = CalibrationConfig(
+    tau_start=0.05, tau_stop=0.95, tau_step=0.05, low_percentile=0.05, high_percentile=0.50
+)
 
 
 def scored(case_id: str, abstain: bool, scores: list[float]) -> calibrate.ScoredCase:
