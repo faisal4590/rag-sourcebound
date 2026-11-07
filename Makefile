@@ -46,5 +46,5 @@ eval:          ## run the harness, compare with eval/baseline.json, exit 1 on re
 test:          ## run the "Done when" tests
 	uv run pytest -q
 
-calibrate:     ## threshold sweep of spec Section 8.4
-	uv run flp calibrate
+calibrate:     ## threshold sweep of spec 8.4, dry run; write with `flp calibrate --local --write`
+	uv run flp calibrate --local

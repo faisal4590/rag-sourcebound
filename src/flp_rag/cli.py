@@ -5,7 +5,7 @@
 `Response` record by status, and exits with 0 (answered), 2 (no information), or 1 (error or
 no API). It never builds text of its own, so the CLI and the API cannot drift apart.
 `retrieve` (also `ask --retrieve-only`) lists chunks from the local retriever without a model
-call. `eval` runs `eval/harness.py` (issue #34); `calibrate` lands with issue #35.
+call. `eval` runs `eval/harness.py` (issue #34); `calibrate` runs `eval/calibrate.py` (issue #35).
 """
 
 import importlib
@@ -32,11 +32,6 @@ WITHDRAWN = "--- Answer withdrawn after the checks ---"
 
 # Tests inject an `httpx.MockTransport`; None means the real network.
 http_transport: httpx.BaseTransport | None = None
-
-
-def _not_yet(issue: int) -> None:
-    typer.echo(f"Available from Milestone 6 (issue #{issue}).", err=True)
-    raise typer.Exit(code=EXIT_ERROR)
 
 
 PREVIEW_CHARS = 200
@@ -496,6 +491,23 @@ def eval_(
 
 
 @app.command()
-def calibrate() -> None:
-    """Threshold sweep of spec Section 8.4. Milestone 6."""
-    _not_yet(35)
+def calibrate(
+    run_file: Annotated[
+        Path | None, typer.Option("--run", help="A harness run file to read the scores from.")
+    ] = None,
+    local: Annotated[
+        bool, typer.Option("--local", help="Score the golden cases on the live index, no model.")
+    ] = False,
+    write: Annotated[
+        bool, typer.Option("--write", help="Write the values into config.yaml and the manifest.")
+    ] = False,
+    out: Annotated[Path | None, typer.Option(help="Report path.")] = None,
+) -> None:
+    """Threshold sweep of spec Section 8.4 (issue #35): tau_low, tau_pass, tau_high."""
+    settings = load_settings()
+    sys.path.insert(0, str(settings.config_path.parent / "eval"))
+    module = importlib.import_module("calibrate")
+    code = module.run(
+        settings, run_file=run_file, local=local or run_file is None, write=write, out=out
+    )
+    raise typer.Exit(code=code)

@@ -134,7 +134,7 @@ def test_every_spec_section_is_typed() -> None:
     assert s.rerank.model == "BAAI/bge-reranker-base"
     assert s.rerank.top_n == 8
     assert s.rerank.batch_size == 16
-    assert (s.gate.tau_low, s.gate.tau_pass, s.gate.tau_high) == (0.20, 0.35, 0.60)
+    assert 0 < s.gate.tau_low < s.gate.tau_pass < s.gate.tau_high <= 1  # values: `make calibrate`
     assert s.context.max_tokens == 6000
     assert s.context.max_blocks == 8
     assert s.context.order == "position"
@@ -181,7 +181,7 @@ def test_settings_are_frozen() -> None:
 
 def test_gate_thresholds_must_be_ordered(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="tau_low"):
-        _load(tmp_path, SHIPPED.replace("tau_low: 0.20", "tau_low: 0.70"))
+        _load(tmp_path, re.sub(r"^(\s+tau_low:\s*)[0-9.]+", r"\g<1>0.999", SHIPPED, flags=re.MULTILINE))
 
 
 def test_chunk_token_bounds_must_be_ordered(tmp_path: Path) -> None:
