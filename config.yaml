@@ -131,9 +131,9 @@ rerank:
   hint_margin: 0.01              # two neighbors closer than this may swap on the chapter hint
 
 gate:
-  tau_low: 0.20                  # recalibrate with Section 8.4
+  tau_low: 0.3  # calibrated 2026-11-07 for BAAI/bge-reranker-base (spec 8.4, `make calibrate`)
   tau_pass: 0.35
-  tau_high: 0.60
+  tau_high: 0.986
 
 context:
   max_tokens: 6000
@@ -210,6 +210,12 @@ eval:                            # Milestone 6 harness (issue #34), spec Section
   targets_max:                   # metric <= target (spec 8.5)
     p95_latency_s: 6
     cost_per_answered_usd: 0.02
+  calibration:                   # the tau_pass sweep and the two percentiles of spec 8.4 (issue #35)
+    tau_start: 0.05
+    tau_stop: 0.95
+    tau_step: 0.05
+    low_percentile: 0.05         # tau_low = this percentile of the answerable best scores
+    high_percentile: 0.50        # tau_high = this percentile
 
 prices_usd_per_million_tokens:
   groq:openai/gpt-oss-120b: { input: 0.0, output: 0.0 }   # free tier; rag.cost_usd stays 0

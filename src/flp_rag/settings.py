@@ -275,6 +275,24 @@ class TraceConfig(_Section):
     instrument_langchain: bool = False
 
 
+class CalibrationConfig(_Section):
+    """The threshold sweep of spec 8.4 (issue #35, `eval/calibrate.py`)."""
+
+    tau_start: float = Field(gt=0, lt=1)
+    tau_stop: float = Field(gt=0, lt=1)
+    tau_step: float = Field(gt=0, lt=1)
+    low_percentile: float = Field(ge=0, le=1)  # tau_low over the answerable best scores
+    high_percentile: float = Field(ge=0, le=1)  # tau_high over the answerable best scores
+
+    @model_validator(mode="after")
+    def _grid_is_ordered(self) -> "CalibrationConfig":
+        if not self.tau_start < self.tau_stop or not self.low_percentile < self.high_percentile:
+            raise ValueError(
+                "eval.calibration: need tau_start < tau_stop and low < high percentile"
+            )
+        return self
+
+
 class EvalConfig(_Section):
     """Milestone 6 harness (issue #34), spec Sections 8.2-8.6."""
 
@@ -295,6 +313,7 @@ class EvalConfig(_Section):
     max_error_share: float = Field(ge=0, le=1)  # more error rows than this share fails the run
     targets_min: dict[str, float]  # metric >= target
     targets_max: dict[str, float]  # metric <= target
+    calibration: CalibrationConfig
 
     @model_validator(mode="after")
     def _targets_disjoint(self) -> "EvalConfig":

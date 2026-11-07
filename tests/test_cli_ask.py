@@ -385,9 +385,23 @@ def test_retrieve_only_runs_the_local_retriever_and_makes_no_api_call(
     assert "does not answer" in result.stderr
 
 
-def test_calibrate_says_available_from_milestone_6() -> None:
-    result = CliRunner().invoke(cli.app, ["calibrate"])
-    assert result.exit_code == 1 and "Available from Milestone 6" in result.stderr
+def test_calibrate_hands_its_options_to_the_sweep(monkeypatch) -> None:
+    """`flp calibrate` is a thin front of `eval/calibrate.py` (issue #35)."""
+    import sys
+    import types
+
+    seen: dict[str, Any] = {}
+    fake = types.ModuleType("calibrate")
+
+    def run(settings: Any, **kw: Any) -> int:
+        seen.update(kw)
+        return 0
+
+    fake.run = run  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "calibrate", fake)
+    result = CliRunner().invoke(cli.app, ["calibrate", "--run", "eval/runs/x.json", "--write"])
+    assert result.exit_code == 0, result.output
+    assert seen["run_file"].name == "x.json" and seen["write"] is True and seen["local"] is False
 
 
 def test_eval_hands_its_options_to_the_harness(monkeypatch) -> None:

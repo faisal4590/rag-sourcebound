@@ -96,6 +96,7 @@ def run_case(case: EvalCase, settings: Settings, deps: Any, store: ParentStore) 
         if case.evidence_quotes
         else None,
         "score_top1": result.scores_all[0][1] if result.scores_all else 0.0,
+        "scores": [s for _, s in result.scores_all],  # best first; eval/calibrate.py reads it
         "n_truncated": result.n_truncated,
         "latency_ms": latency_ms,
     }

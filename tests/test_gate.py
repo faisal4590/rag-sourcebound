@@ -3,6 +3,7 @@
 thresholds. Unit tests run with no graph, no model, and no index; the graph tests use stub nodes
 around the real gate."""
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +15,7 @@ from flp_rag.contracts import Candidate
 from flp_rag.graph import build
 from flp_rag.graph.nodes import gate as g
 from flp_rag.graph.state import RagState, initial_state
-from flp_rag.settings import ABSTAIN_TEXT, Settings, load_settings
+from flp_rag.settings import ABSTAIN_TEXT, GateConfig, Settings, load_settings
 from tests.test_graph_build import stub_nodes
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,7 +24,18 @@ SHIPPED = (ROOT / "config.yaml").read_text()
 
 @pytest.fixture(scope="module")
 def settings() -> Settings:
-    return load_settings()
+    """The zone tests pin the thresholds the spec table uses as its example; the shipped values
+    move with every calibration (issue #35) and are checked by the calibration tests."""
+    gate = GateConfig(tau_low=0.2, tau_pass=0.35, tau_high=0.6)
+    return load_settings().model_copy(update={"gate": gate})
+
+
+def gate_text(**values: float) -> str:
+    """The shipped config with the given gate values, whatever the file holds today."""
+    text = SHIPPED
+    for key, value in values.items():
+        text = re.sub(rf"^(\s+{key}:\s*)[0-9.]+", rf"\g<1>{value}", text, count=1, flags=re.MULTILINE)
+    return text
 
 
 # --------------------------------------------------------------------------- decision function
@@ -87,14 +99,14 @@ def test_thresholds_must_be_strictly_ordered(tmp_path: Path) -> None:
     from tests.test_settings import _load
 
     with pytest.raises(ValueError) as exc:
-        _load(tmp_path, SHIPPED.replace("tau_pass: 0.35", "tau_pass: 0.70"))
+        _load(tmp_path, gate_text(tau_low=0.2, tau_pass=0.7, tau_high=0.6))
     assert "0.7" in str(exc.value) and "0.6" in str(exc.value) and "tau_pass" in str(exc.value)
     (tmp_path / "eq").mkdir()
     with pytest.raises(ValueError, match="tau_low < tau_pass < tau_high"):
-        _load(tmp_path / "eq", SHIPPED.replace("tau_low: 0.20", "tau_low: 0.35"))
+        _load(tmp_path / "eq", gate_text(tau_low=0.35, tau_pass=0.35, tau_high=0.6))
     (tmp_path / "eq2").mkdir()
     with pytest.raises(ValueError, match="tau_low < tau_pass < tau_high"):
-        _load(tmp_path / "eq2", SHIPPED.replace("tau_high: 0.60", "tau_high: 0.35"))
+        _load(tmp_path / "eq2", gate_text(tau_low=0.2, tau_pass=0.35, tau_high=0.35))
 
 
 # --------------------------------------------------------------------------- node in the graph

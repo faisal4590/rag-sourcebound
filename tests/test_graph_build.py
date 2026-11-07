@@ -185,7 +185,9 @@ def test_live_stub_nodes_write_spec_attributes() -> None:
     assert spans["guardrails.input"]["guard.chars"] == len("How do readonly properties work?")
     g = spans["relevance.gate"]
     assert g["rag.gate_decision"] == "pass" and g["rag.score_top1"] == pytest.approx(0.7)
-    assert (g["rag.tau_low"], g["rag.tau_pass"], g["rag.tau_high"]) == (0.2, 0.35, 0.6) and g["rag.n_pass"] == 1
+    gate = settings.gate
+    assert (g["rag.tau_low"], g["rag.tau_pass"], g["rag.tau_high"]) == (gate.tau_low, gate.tau_pass, gate.tau_high)
+    assert g["rag.n_pass"] == 1
     r = spans["response.build"]
     assert r["rag.status"] == "answered" and r["rag.n_sources"] == 1 and r["rag.answer_chars"] > 0
 

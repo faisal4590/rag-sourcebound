@@ -108,6 +108,7 @@ class CaseResult:
     cited_total: int
     cited_hits: int
     code_present: bool | None
+    scores: list[float]  # reranker scores of `rerank.top`, best first; eval/calibrate.py reads it
     faithful: bool | None  # the Stage 17 verdict, also on an `output.unfaithful` abstain
     judge_error: str | None
     answer_chars: int | None
@@ -137,7 +138,9 @@ def evaluate_case(
     debug = body.get("debug") or {}
     answered = status == "answered"
     answer = str(body.get("answer") or "")
-    top_ids = [e["chunk_id"] for e in (debug.get("rerank") or {}).get("top") or []]
+    top = (debug.get("rerank") or {}).get("top") or []
+    top_ids = [e["chunk_id"] for e in top]
+    scores = [float(e["score"]) for e in top if e.get("score") is not None]
     fused_ids = list((debug.get("retrieval") or {}).get("fused") or [])[:FUSED_K]
     expected = list(case.expected_pages_printed)
     rank_rerank = rank_fused = None
@@ -177,6 +180,7 @@ def evaluate_case(
         cited_total=len(sources),
         cited_hits=cited_hits,
         code_present=code_present,
+        scores=scores,
         faithful=check.get("faithful"),
         judge_error=check.get("judge_error"),
         answer_chars=len(answer) if answered else None,
