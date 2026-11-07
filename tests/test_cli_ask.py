@@ -425,7 +425,20 @@ def test_eval_hands_its_options_to_the_harness(monkeypatch) -> None:
     assert result.exit_code == 1, result.output
     assert seen["api_url"] == "http://x:1" and seen["limit"] == 3
     assert seen["upload"] is False and seen["judge"] is False and seen["pause_s"] is None
-    assert seen["golden"].name == "golden_v1.jsonl"
+    assert seen["golden"].name == "golden_v1.jsonl" and seen["update_baseline_after"] is False
+    copied: dict[str, Any] = {}
+    fake.update_baseline = lambda src, dst: copied.update(src=src, dst=dst)  # type: ignore[attr-defined]
+    fake.update_baseline = lambda src, dst, expected_cases=None: copied.update(  # type: ignore[attr-defined]
+        src=src, dst=dst, n=expected_cases
+    )
+    result = CliRunner().invoke(cli.app, ["eval", "--baseline-from", "eval/runs/r.json"])
+    assert result.exit_code == 0, result.output
+    assert copied["src"].name == "r.json" and copied["dst"].name == "baseline.json"
+    assert copied["n"] == 100  # the golden size guards a partial run
+    both = CliRunner().invoke(
+        cli.app, ["eval", "--baseline-from", "eval/runs/r.json", "--update-baseline"]
+    )
+    assert both.exit_code != 0 and "exclude each other" in both.output
 
 
 def test_ingest_dispatches_to_the_ingest_runner(monkeypatch) -> None:

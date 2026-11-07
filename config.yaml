@@ -217,6 +217,10 @@ eval:                            # Milestone 6 harness (issue #34), spec Section
     low_percentile: 0.05         # tau_low = this percentile of the answerable best scores
     high_percentile: 0.10        # tau_high = this percentile; the spec says 0.50, which made half the
                                  # answers borderline with bge-reranker-base (judge on each); user's call in #35
+  online:                        # spec 8.7 rule 1: the faithfulness sample of production traces (issue #36)
+    hours: 24
+    sample_share: 0.2
+    seed: 42
 
 prices_usd_per_million_tokens:
   groq:openai/gpt-oss-120b: { input: 0.0, output: 0.0 }   # free tier; rag.cost_usd stays 0

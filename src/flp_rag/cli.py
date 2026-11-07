@@ -20,6 +20,7 @@ import httpx
 import typer
 
 from flp_rag import tracing
+from flp_rag.contracts import EvalCase, read_jsonl
 from flp_rag.ingest import run as run_mod
 from flp_rag.settings import ABSTAIN_TEXT, Settings, load_settings
 
@@ -470,11 +471,30 @@ def eval_(
     tag: Annotated[
         str | None, typer.Option(help="The run_tag. Default <prefix>-<timestamp>.")
     ] = None,
+    update_baseline: Annotated[
+        bool, typer.Option("--update-baseline", help="A run with exit 0 becomes the baseline.")
+    ] = False,
+    baseline_from: Annotated[
+        Path | None,
+        typer.Option(
+            "--baseline-from",
+            help="Copy this run file to the baseline (--baseline names the destination); no run.",
+        ),
+    ] = None,
 ) -> None:
     """Run the evaluation harness of spec 8.2-8.6 (issue #34); exit 1 on a regression."""
     settings = load_settings()
     sys.path.insert(0, str(settings.config_path.parent / "eval"))
     harness = importlib.import_module("harness")
+    if baseline_from is not None:
+        if update_baseline:
+            raise typer.BadParameter("--baseline-from and --update-baseline exclude each other")
+        target = baseline or settings.config_path.parent / settings.eval.baseline_file
+        golden_path = golden or settings.config_path.parent / settings.eval.golden_file
+        golden_n = sum(1 for _ in read_jsonl(golden_path, EvalCase))
+        harness.update_baseline(baseline_from, target, expected_cases=golden_n)
+        typer.echo(f"baseline <- {baseline_from} ({target})")
+        raise typer.Exit(code=0)
     code = harness.run(
         settings,
         api_url=api_url or settings.cli.api_url,
@@ -486,6 +506,7 @@ def eval_(
         pause_s=pause,
         limit=limit,
         tag=tag,
+        update_baseline_after=update_baseline,
     )
     raise typer.Exit(code=code)
 
