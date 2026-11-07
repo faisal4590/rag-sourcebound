@@ -385,10 +385,33 @@ def test_retrieve_only_runs_the_local_retriever_and_makes_no_api_call(
     assert "does not answer" in result.stderr
 
 
-def test_eval_and_calibrate_say_available_from_milestone_6() -> None:
-    for command in ("eval", "calibrate"):
-        result = CliRunner().invoke(cli.app, [command])
-        assert result.exit_code == 1 and "Available from Milestone 6" in result.stderr
+def test_calibrate_says_available_from_milestone_6() -> None:
+    result = CliRunner().invoke(cli.app, ["calibrate"])
+    assert result.exit_code == 1 and "Available from Milestone 6" in result.stderr
+
+
+def test_eval_hands_its_options_to_the_harness(monkeypatch) -> None:
+    """`flp eval` is a thin front of `eval/harness.py` (issue #34): the options reach `run`,
+    the exit code comes back, no request is sent here."""
+    import sys
+    import types
+
+    seen: dict[str, Any] = {}
+    fake = types.ModuleType("harness")
+
+    def run(settings: Any, **kw: Any) -> int:
+        seen.update(kw)
+        return 1
+
+    fake.run = run  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "harness", fake)
+    result = CliRunner().invoke(
+        cli.app, ["eval", "--api-url", "http://x:1", "--no-upload", "--no-judge", "--limit", "3"]
+    )
+    assert result.exit_code == 1, result.output
+    assert seen["api_url"] == "http://x:1" and seen["limit"] == 3
+    assert seen["upload"] is False and seen["judge"] is False and seen["pause_s"] is None
+    assert seen["golden"].name == "golden_v1.jsonl"
 
 
 def test_ingest_dispatches_to_the_ingest_runner(monkeypatch) -> None:

@@ -1,0 +1,482 @@
+{
+  "run_tag": "eval-issue34-live",
+  "timestamp": "2026-11-07T17:06:51+00:00",
+  "git_sha": "e112da7",
+  "golden_file": "/private/tmp/claude-501/-Users-faisalibnaziz-code-rag-php/55ef0cb5-2ab6-493d-98b4-0ce899f6ab2f/scratchpad/golden_subset10.jsonl",
+  "golden_version": "v1",
+  "n_cases": 10,
+  "index_version": "v3-bgem3-d4ebab9e",
+  "prompt_version": "287346c0",
+  "correctness_prompt_version": "daba7d90",
+  "config_hash": "57dd1b19",
+  "models": {
+    "embed": "BAAI/bge-m3",
+    "sparse": "Qdrant/bm25",
+    "rerank": "BAAI/bge-reranker-base",
+    "gen": "groq:openai/gpt-oss-120b",
+    "query": "groq:openai/gpt-oss-20b",
+    "judge": "groq:openai/gpt-oss-20b"
+  },
+  "api_url": "http://localhost:8000",
+  "metrics": {
+    "recall_at_5": {
+      "value": 0.8333333333333334,
+      "n": 6,
+      "target": 0.85,
+      "pass": false
+    },
+    "mrr_at_10": {
+      "value": 0.8333333333333334,
+      "n": 6,
+      "target": 0.7,
+      "pass": true
+    },
+    "ndcg_at_10": {
+      "value": 0.7098741824311355,
+      "n": 6,
+      "target": null,
+      "pass": null
+    },
+    "recall_at_30_prerank": {
+      "value": 0.8333333333333334,
+      "n": 6,
+      "target": 0.95,
+      "pass": false
+    },
+    "faithfulness": {
+      "value": 1.0,
+      "n": 3,
+      "target": 0.95,
+      "pass": true
+    },
+    "correctness": {
+      "value": 0.6,
+      "n": 5,
+      "target": 0.8,
+      "pass": false
+    },
+    "citation_accuracy": {
+      "value": 1.0,
+      "n": 3,
+      "target": 0.9,
+      "pass": true
+    },
+    "code_presence": {
+      "value": 1.0,
+      "n": 1,
+      "target": 0.9,
+      "pass": true
+    },
+    "abstain_precision": {
+      "value": 0.6666666666666666,
+      "n": 6,
+      "target": 0.9,
+      "pass": false
+    },
+    "abstain_recall": {
+      "value": 1.0,
+      "n": 4,
+      "target": 0.9,
+      "pass": true
+    },
+    "abstain_f1": {
+      "value": 0.8,
+      "n": 10,
+      "target": 0.9,
+      "pass": false
+    },
+    "gate_share": {
+      "value": 0.8333333333333334,
+      "n": 6,
+      "target": 0.75,
+      "pass": true
+    },
+    "p95_latency_s": {
+      "value": 19.222199999999997,
+      "n": 10,
+      "target": 6.0,
+      "pass": false
+    },
+    "cost_per_answered_usd": {
+      "value": 0.0,
+      "n": 3,
+      "target": 0.02,
+      "pass": true
+    },
+    "answer_length_median": {
+      "value": 310,
+      "n": 3,
+      "target": null,
+      "pass": null
+    }
+  },
+  "breakdown": {
+    "span_latency_ms": {
+      "context.assemble": {
+        "p50": 9.5,
+        "p95": 21.099999999999998,
+        "n": 4
+      },
+      "guardrails.input": {
+        "p50": 11.0,
+        "p95": 24.599999999999998,
+        "n": 9
+      },
+      "guardrails.output": {
+        "p50": 532.5,
+        "p95": 646.75,
+        "n": 4
+      },
+      "llm.generate": {
+        "p50": 629.5,
+        "p95": 1597.9499999999996,
+        "n": 4
+      },
+      "query.understand": {
+        "p50": 2198.0,
+        "p95": 4584.4,
+        "n": 9
+      },
+      "relevance.gate": {
+        "p50": 0.0,
+        "p95": 0.0,
+        "n": 9
+      },
+      "rerank": {
+        "p50": 1465.0,
+        "p95": 2734.3999999999996,
+        "n": 9
+      },
+      "retrieval.hybrid": {
+        "p50": 43.0,
+        "p95": 8231.799999999996,
+        "n": 9
+      }
+    },
+    "request_latency_ms": {
+      "p50": 5457.0,
+      "p95": 19222.199999999997
+    },
+    "cost_usd_mean": {
+      "answered": 0.0,
+      "abstained": 0.0
+    },
+    "n": {
+      "answered": 3,
+      "abstained": 6,
+      "error": 1,
+      "judge_errors": 0
+    }
+  },
+  "regressions": [],
+  "error_share": 0.1,
+  "judge_error_share": 0.0,
+  "cases": [
+    {
+      "case_id": "g001",
+      "group": "answerable",
+      "kind": "definition",
+      "expected_abstain": false,
+      "status": "answered",
+      "abstain_reason": null,
+      "trace_id": "f53316241374603543170132157f14f7",
+      "elapsed_ms": 6102,
+      "timings_ms": {
+        "guardrails.input": 0,
+        "query.understand": 2577,
+        "retrieval.hybrid": 196,
+        "rerank": 2363,
+        "relevance.gate": 0,
+        "context.assemble": 3,
+        "llm.generate": 483,
+        "guardrails.output": 448
+      },
+      "cost_usd": 0.0,
+      "rank_rerank": 1,
+      "rank_fused": 1,
+      "ndcg_10": 0.8315546295836225,
+      "cited_total": 1,
+      "cited_hits": 1,
+      "code_present": null,
+      "faithful": true,
+      "judge_error": null,
+      "answer_chars": 310,
+      "correctness": 2,
+      "correctness_reason": "The given answer fully states the reference point that PHP\u2019s success is due to its accessibility and ease of use.",
+      "error": null
+    },
+    {
+      "case_id": "g005",
+      "group": "answerable",
+      "kind": "code",
+      "expected_abstain": false,
+      "status": "answered",
+      "abstain_reason": null,
+      "trace_id": "6ad89c1fc4631c3418d1915ad63f8bee",
+      "elapsed_ms": 18197,
+      "timings_ms": {
+        "guardrails.input": 1,
+        "query.understand": 578,
+        "retrieval.hybrid": 13235,
+        "rerank": 2982,
+        "relevance.gate": 0,
+        "context.assemble": 22,
+        "llm.generate": 708,
+        "guardrails.output": 617
+      },
+      "cost_usd": 0.0,
+      "rank_rerank": 1,
+      "rank_fused": 1,
+      "ndcg_10": 0.8503449055347546,
+      "cited_total": 1,
+      "cited_hits": 1,
+      "code_present": true,
+      "faithful": true,
+      "judge_error": null,
+      "answer_chars": 401,
+      "correctness": 2,
+      "correctness_reason": "The answer reproduces the constructor property promotion with the same properties as the reference.",
+      "error": null
+    },
+    {
+      "case_id": "g009",
+      "group": "answerable",
+      "kind": "definition",
+      "expected_abstain": false,
+      "status": "error",
+      "abstain_reason": null,
+      "trace_id": "fe94b6c48d55420c4ef429334c464e96",
+      "elapsed_ms": 20061,
+      "timings_ms": {},
+      "cost_usd": 0.0,
+      "rank_rerank": null,
+      "rank_fused": null,
+      "ndcg_10": 0.0,
+      "cited_total": 0,
+      "cited_hits": 0,
+      "code_present": null,
+      "faithful": null,
+      "judge_error": null,
+      "answer_chars": null,
+      "correctness": null,
+      "correctness_reason": null,
+      "error": "request exceeded 20.0 s"
+    },
+    {
+      "case_id": "g021",
+      "group": "answerable",
+      "kind": "how-to",
+      "expected_abstain": false,
+      "status": "no_information",
+      "abstain_reason": "output.invalid_after_repair",
+      "trace_id": "255be0c04b5b70444b601c356e3ebe9a",
+      "elapsed_ms": 8569,
+      "timings_ms": {
+        "guardrails.input": 27,
+        "query.understand": 4690,
+        "retrieval.hybrid": 43,
+        "rerank": 1944,
+        "relevance.gate": 0,
+        "context.assemble": 16,
+        "llm.generate": 1755,
+        "guardrails.output": 4
+      },
+      "cost_usd": 0.0,
+      "rank_rerank": 1,
+      "rank_fused": 1,
+      "ndcg_10": 0.7844801364718914,
+      "cited_total": 0,
+      "cited_hits": 0,
+      "code_present": null,
+      "faithful": null,
+      "judge_error": null,
+      "answer_chars": null,
+      "correctness": 0,
+      "correctness_reason": "abstained: an answerable case with no answer scores 0",
+      "error": null
+    },
+    {
+      "case_id": "g033",
+      "group": "answerable",
+      "kind": "definition",
+      "expected_abstain": false,
+      "status": "answered",
+      "abstain_reason": null,
+      "trace_id": "eae6fe9cc8c99c89f9b9d30e012b6a5c",
+      "elapsed_ms": 4962,
+      "timings_ms": {
+        "guardrails.input": 21,
+        "query.understand": 2198,
+        "retrieval.hybrid": 31,
+        "rerank": 1414,
+        "relevance.gate": 0,
+        "context.assemble": 2,
+        "llm.generate": 551,
+        "guardrails.output": 652
+      },
+      "cost_usd": 0.0,
+      "rank_rerank": 1,
+      "rank_fused": 1,
+      "ndcg_10": 1.0,
+      "cited_total": 1,
+      "cited_hits": 1,
+      "code_present": null,
+      "faithful": true,
+      "judge_error": null,
+      "answer_chars": 301,
+      "correctness": 2,
+      "correctness_reason": "The answer correctly states that the null\u2011safe operator returns null instead of raising an error when the left-hand side is null.",
+      "error": null
+    },
+    {
+      "case_id": "g048",
+      "group": "answerable",
+      "kind": "definition",
+      "expected_abstain": false,
+      "status": "no_information",
+      "abstain_reason": "gate.low_top_score",
+      "trace_id": "60475ac46572f57e6d9f8947348001eb",
+      "elapsed_ms": 3936,
+      "timings_ms": {
+        "guardrails.input": 13,
+        "query.understand": 2369,
+        "retrieval.hybrid": 37,
+        "rerank": 1486,
+        "relevance.gate": 0
+      },
+      "cost_usd": 0.0,
+      "rank_rerank": 1,
+      "rank_fused": 1,
+      "ndcg_10": 0.7928654229965442,
+      "cited_total": 0,
+      "cited_hits": 0,
+      "code_present": null,
+      "faithful": null,
+      "judge_error": null,
+      "answer_chars": null,
+      "correctness": 0,
+      "correctness_reason": "abstained: an answerable case with no answer scores 0",
+      "error": null
+    },
+    {
+      "case_id": "u002",
+      "group": "in_domain_unanswerable",
+      "kind": "unanswerable",
+      "expected_abstain": true,
+      "status": "no_information",
+      "abstain_reason": "gate.no_passing_chunk",
+      "trace_id": "d11000411d093ad2dc88373e2fa540ae",
+      "elapsed_ms": 2961,
+      "timings_ms": {
+        "guardrails.input": 11,
+        "query.understand": 815,
+        "retrieval.hybrid": 727,
+        "rerank": 1375,
+        "relevance.gate": 0
+      },
+      "cost_usd": 0.0,
+      "rank_rerank": null,
+      "rank_fused": null,
+      "ndcg_10": null,
+      "cited_total": 0,
+      "cited_hits": 0,
+      "code_present": null,
+      "faithful": null,
+      "judge_error": null,
+      "answer_chars": null,
+      "correctness": null,
+      "correctness_reason": null,
+      "error": null
+    },
+    {
+      "case_id": "u013",
+      "group": "in_domain_unanswerable",
+      "kind": "unanswerable",
+      "expected_abstain": true,
+      "status": "no_information",
+      "abstain_reason": "gate.low_top_score",
+      "trace_id": "9f9b8dfb3bf4968b6788eb444eb693cf",
+      "elapsed_ms": 2116,
+      "timings_ms": {
+        "guardrails.input": 12,
+        "query.understand": 638,
+        "retrieval.hybrid": 42,
+        "rerank": 1400,
+        "relevance.gate": 0
+      },
+      "cost_usd": 0.0,
+      "rank_rerank": null,
+      "rank_fused": null,
+      "ndcg_10": null,
+      "cited_total": 0,
+      "cited_hits": 0,
+      "code_present": null,
+      "faithful": null,
+      "judge_error": null,
+      "answer_chars": null,
+      "correctness": null,
+      "correctness_reason": null,
+      "error": null
+    },
+    {
+      "case_id": "o001",
+      "group": "out_of_domain",
+      "kind": "offtopic",
+      "expected_abstain": true,
+      "status": "no_information",
+      "abstain_reason": "gate.low_top_score",
+      "trace_id": "fd1faafbbec925f0850e3f59bc0cb99f",
+      "elapsed_ms": 5952,
+      "timings_ms": {
+        "guardrails.input": 10,
+        "query.understand": 4426,
+        "retrieval.hybrid": 29,
+        "rerank": 1465,
+        "relevance.gate": 0
+      },
+      "cost_usd": 0.0,
+      "rank_rerank": null,
+      "rank_fused": null,
+      "ndcg_10": null,
+      "cited_total": 0,
+      "cited_hits": 0,
+      "code_present": null,
+      "faithful": null,
+      "judge_error": null,
+      "answer_chars": null,
+      "correctness": null,
+      "correctness_reason": null,
+      "error": null
+    },
+    {
+      "case_id": "o011",
+      "group": "out_of_domain",
+      "kind": "offtopic",
+      "expected_abstain": true,
+      "status": "no_information",
+      "abstain_reason": "gate.low_top_score",
+      "trace_id": "2ef1c2466e81838ea985ec5ae214374c",
+      "elapsed_ms": 2191,
+      "timings_ms": {
+        "guardrails.input": 7,
+        "query.understand": 610,
+        "retrieval.hybrid": 175,
+        "rerank": 1372,
+        "relevance.gate": 0
+      },
+      "cost_usd": 0.0,
+      "rank_rerank": null,
+      "rank_fused": null,
+      "ndcg_10": null,
+      "cited_total": 0,
+      "cited_hits": 0,
+      "code_present": null,
+      "faithful": null,
+      "judge_error": null,
+      "answer_chars": null,
+      "correctness": null,
+      "correctness_reason": null,
+      "error": null
+    }
+  ]
+}

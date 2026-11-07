@@ -5,9 +5,10 @@
 `Response` record by status, and exits with 0 (answered), 2 (no information), or 1 (error or
 no API). It never builds text of its own, so the CLI and the API cannot drift apart.
 `retrieve` (also `ask --retrieve-only`) lists chunks from the local retriever without a model
-call. `eval` and `calibrate` land in Milestone 6.
+call. `eval` runs `eval/harness.py` (issue #34); `calibrate` lands with issue #35.
 """
 
+import importlib
 import json
 import os
 import sys
@@ -452,9 +453,46 @@ def ingest(
 
 
 @app.command(name="eval")
-def eval_() -> None:
-    """Run the evaluation harness. Milestone 6."""
-    _not_yet(34)
+def eval_(
+    api_url: Annotated[
+        str | None, typer.Option("--api-url", help="Where the API runs. Default cli.api_url.")
+    ] = None,
+    out: Annotated[
+        Path | None, typer.Option(help="Run file. Default eval/runs/<stamp>_...")
+    ] = None,
+    no_upload: Annotated[bool, typer.Option("--no-upload", help="No scores to Phoenix.")] = False,
+    no_judge: Annotated[
+        bool, typer.Option("--no-judge", help="Skip the correctness judge.")
+    ] = False,
+    pause: Annotated[float | None, typer.Option(help="Seconds between requests.")] = None,
+    limit: Annotated[int | None, typer.Option(help="First N cases only.")] = None,
+    golden: Annotated[
+        Path | None, typer.Option(help="Golden file. Default eval.golden_file.")
+    ] = None,
+    baseline: Annotated[
+        Path | None, typer.Option(help="Baseline file. Default eval.baseline_file.")
+    ] = None,
+    tag: Annotated[
+        str | None, typer.Option(help="The run_tag. Default <prefix>-<timestamp>.")
+    ] = None,
+) -> None:
+    """Run the evaluation harness of spec 8.2-8.6 (issue #34); exit 1 on a regression."""
+    settings = load_settings()
+    sys.path.insert(0, str(settings.config_path.parent / "eval"))
+    harness = importlib.import_module("harness")
+    code = harness.run(
+        settings,
+        api_url=api_url or settings.cli.api_url,
+        golden=golden or settings.config_path.parent / settings.eval.golden_file,
+        out=out,
+        baseline=baseline,
+        judge=False if no_judge else None,
+        upload=False if no_upload else None,
+        pause_s=pause,
+        limit=limit,
+        tag=tag,
+    )
+    raise typer.Exit(code=code)
 
 
 @app.command()
