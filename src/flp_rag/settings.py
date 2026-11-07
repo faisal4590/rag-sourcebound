@@ -275,6 +275,35 @@ class TraceConfig(_Section):
     instrument_langchain: bool = False
 
 
+class EvalConfig(_Section):
+    """Milestone 6 harness (issue #34), spec Sections 8.2-8.6."""
+
+    golden_file: Path
+    runs_dir: Path
+    baseline_file: Path
+    page_tolerance: int = Field(ge=0)  # a hit: chunk pages intersect the expected pages, +- this
+    regression_tolerance: float = Field(ge=0)  # a target metric this far under the baseline fails
+    pause_s: float = Field(ge=0)  # between requests (the free tier's tokens per minute)
+    timeout_s: float = Field(gt=0)  # per request; over api.timeout_s so the 504 is read
+    run_tag_prefix: str = Field(min_length=1)
+    phoenix_project: str = Field(min_length=1)
+    upload_scores: bool
+    correctness_prompt_file: Path
+    correctness_max_output_tokens: int = Field(gt=0)
+    correctness_temperature: float = Field(ge=0)
+    judge_pause_s: float = Field(ge=0)  # between correctness judge calls, and before the retry
+    max_error_share: float = Field(ge=0, le=1)  # more error rows than this share fails the run
+    targets_min: dict[str, float]  # metric >= target
+    targets_max: dict[str, float]  # metric <= target
+
+    @model_validator(mode="after")
+    def _targets_disjoint(self) -> "EvalConfig":
+        both = set(self.targets_min) & set(self.targets_max)
+        if both:
+            raise ValueError(f"eval.targets_min and eval.targets_max both name {sorted(both)}")
+        return self
+
+
 class Price(_Section):
     """USD per million tokens."""
 
@@ -309,6 +338,7 @@ class Settings(_Section):
     feedback: FeedbackConfig
     cache: CacheConfig
     trace: TraceConfig
+    eval: EvalConfig
     prices_usd_per_million_tokens: dict[str, Price]
 
     config_hash: str = Field(pattern=r"^[0-9a-f]{8}$")
@@ -379,7 +409,11 @@ def _find_secret_keys(node: Any, prefix: str = "") -> list[str]:
 
 INGEST_DIR = Path(__file__).resolve().parent / "ingest"
 INGEST_SOURCE_FILES = (
-    "s01_parse.py", "s02_structure.py", "s03_clean.py", "s04_chunk.py", "s05_enrich.py",
+    "s01_parse.py",
+    "s02_structure.py",
+    "s03_clean.py",
+    "s04_chunk.py",
+    "s05_enrich.py",
 )
 
 

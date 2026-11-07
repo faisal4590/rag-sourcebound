@@ -210,7 +210,11 @@ def default_nodes(deps: Deps) -> GraphNodes:
             cache=deps.cache,
             collection=deps.collection,
         )
-        return {"candidates": candidates}
+        out: dict[str, Any] = {"candidates": candidates}
+        if state.get("debug"):  # Recall@30 before the reranker (issue #34) reads this list
+            fused = [c.chunk_id for c in candidates]
+            out["debug_info"] = {**state.get("debug_info", {}), "retrieval": {"fused": fused}}
+        return out
 
     return GraphNodes(
         guard_input, understand, retrieve, rerank, gate, assemble, generate, check_output, respond

@@ -254,6 +254,7 @@ def create_app(
             filters=filters,
             stream=body.stream,
             debug=body.debug,
+            judge_all=body.debug and body.judge_all,  # issue #34
             index_version=st.index_version or "",
             run_tag=run_tag,
         )
