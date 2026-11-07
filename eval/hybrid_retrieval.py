@@ -1,5 +1,5 @@
 # Part 8 of issue #25: dense, sparse, and fused retrieval measured on the live Qdrant index.
-"""Measure Stage 12 on the live index with the 30 golden questions.
+"""Measure Stage 12 on the live index with the answerable golden questions (those with evidence).
 
 Three runs over `eval/golden_v1.jsonl`: dense only, sparse only (Qdrant BM25 with the IDF
 modifier), and the fused list. A hit is a chunk whose display text contains one of the case's
@@ -177,7 +177,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     settings = load_settings()
     tracing.configure_tracing(settings)
-    cases = list(read_jsonl(args.golden, EvalCase))
+    cases = [c for c in read_jsonl(args.golden, EvalCase) if c.evidence_quotes]
     with EmbeddingCache(settings.config_path.parent / settings.embed.cache_path) as cache:
         deps = {
             "client": r.qdrant_client(settings),
