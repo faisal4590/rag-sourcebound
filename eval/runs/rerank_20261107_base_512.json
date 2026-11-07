@@ -1,0 +1,439 @@
+{
+  "n_answerable": 30,
+  "n_offtopic": 10,
+  "mrr10_fused": 0.9,
+  "mrr10_reranked": 0.9111111111111111,
+  "recall8_fused": 1.0,
+  "recall8_reranked": 1.0,
+  "recall3_reranked": 0.9333333333333333,
+  "n_truncated_total": 305,
+  "score_top1_answerable": {
+    "min": 0.4044022569224814,
+    "p05": 0.5575062603422561,
+    "median": 0.9845469845881054,
+    "max": 0.9997043344994814,
+    "above_tau_pass": 30
+  },
+  "score_top1_offtopic": {
+    "min": 3.743249167079692e-05,
+    "median": 3.978437193315044e-05,
+    "max": 0.000606296704771757,
+    "below_tau_low": 10
+  },
+  "thresholds": {
+    "tau_low": 0.2,
+    "tau_pass": 0.35,
+    "tau_high": 0.6
+  },
+  "latency_ms": {
+    "p50": 1343.5076035093516,
+    "p95": 1478.6870984826237,
+    "max": 1569.3018339807168
+  },
+  "device": "mps",
+  "rerank_model": "BAAI/bge-reranker-base",
+  "max_length": 512,
+  "top_k_fused": 30,
+  "rows": [
+    {
+      "case_id": "g001",
+      "kind": "definition",
+      "abstain": false,
+      "rank_fused": 1,
+      "rank_reranked": 1,
+      "score_top1": 0.9990561438233851,
+      "n_truncated": 4,
+      "latency_ms": 1569.3018339807168
+    },
+    {
+      "case_id": "g002",
+      "kind": "code",
+      "abstain": false,
+      "rank_fused": 1,
+      "rank_reranked": 1,
+      "score_top1": 0.6601816615160131,
+      "n_truncated": 7,
+      "latency_ms": 1353.2699170755222
+    },
+    {
+      "case_id": "g003",
+      "kind": "comparison",
+      "abstain": false,
+      "rank_fused": 1,
+      "rank_reranked": 1,
+      "score_top1": 0.9445234015529093,
+      "n_truncated": 6,
+      "latency_ms": 1338.1988330511376
+    },
+    {
+      "case_id": "g004",
+      "kind": "definition",
+      "abstain": false,
+      "rank_fused": 1,
+      "rank_reranked": 1,
+      "score_top1": 0.9684218911213608,
+      "n_truncated": 6,
+      "latency_ms": 1336.713333032094
+    },
+    {
+      "case_id": "g005",
+      "kind": "code",
+      "abstain": false,
+      "rank_fused": 1,
+      "rank_reranked": 1,
+      "score_top1": 0.9864365811727958,
+      "n_truncated": 6,
+      "latency_ms": 1341.2654579151422
+    },
+    {
+      "case_id": "g006",
+      "kind": "how-to",
+      "abstain": false,
+      "rank_fused": 1,
+      "rank_reranked": 1,
+      "score_top1": 0.9997043344994814,
+      "n_truncated": 7,
+      "latency_ms": 1358.0340829212219
+    },
+    {
+      "case_id": "g007",
+      "kind": "how-to",
+      "abstain": false,
+      "rank_fused": 1,
+      "rank_reranked": 1,
+      "score_top1": 0.9925134866038976,
+      "n_truncated": 7,
+      "latency_ms": 1547.2393749514595
+    },
+    {
+      "case_id": "g008",
+      "kind": "code",
+      "abstain": false,
+      "rank_fused": 1,
+      "rank_reranked": 1,
+      "score_top1": 0.9963620572376313,
+      "n_truncated": 7,
+      "latency_ms": 1475.0790839316323
+    },
+    {
+      "case_id": "g009",
+      "kind": "definition",
+      "abstain": false,
+      "rank_fused": 1,
+      "rank_reranked": 1,
+      "score_top1": 0.9876545075002514,
+      "n_truncated": 8,
+      "latency_ms": 1431.3934590900317
+    },
+    {
+      "case_id": "g010",
+      "kind": "comparison",
+      "abstain": false,
+      "rank_fused": 2,
+      "rank_reranked": 1,
+      "score_top1": 0.998479860692895,
+      "n_truncated": 9,
+      "latency_ms": 1333.988916943781
+    },
+    {
+      "case_id": "g011",
+      "kind": "code",
+      "abstain": false,
+      "rank_fused": 1,
+      "rank_reranked": 1,
+      "score_top1": 0.9835231414712721,
+      "n_truncated": 10,
+      "latency_ms": 1332.8493329463527
+    },
+    {
+      "case_id": "g012",
+      "kind": "how-to",
+      "abstain": false,
+      "rank_fused": 2,
+      "rank_reranked": 4,
+      "score_top1": 0.9664768193359873,
+      "n_truncated": 6,
+      "latency_ms": 1336.452665971592
+    },
+    {
+      "case_id": "g013",
+      "kind": "comparison",
+      "abstain": false,
+      "rank_fused": 2,
+      "rank_reranked": 3,
+      "score_top1": 0.8729219705882462,
+      "n_truncated": 9,
+      "latency_ms": 1340.6657080631703
+    },
+    {
+      "case_id": "g014",
+      "kind": "code",
+      "abstain": false,
+      "rank_fused": 1,
+      "rank_reranked": 2,
+      "score_top1": 0.7013437330060728,
+      "n_truncated": 8,
+      "latency_ms": 1337.7457919996232
+    },
+    {
+      "case_id": "g015",
+      "kind": "definition",
+      "abstain": false,
+      "rank_fused": 2,
+      "rank_reranked": 1,
+      "score_top1": 0.9915996586611199,
+      "n_truncated": 8,
+      "latency_ms": 1347.5023750215769
+    },
+    {
+      "case_id": "g016",
+      "kind": "definition",
+      "abstain": false,
+      "rank_fused": 1,
+      "rank_reranked": 1,
+      "score_top1": 0.9995126843364177,
+      "n_truncated": 9,
+      "latency_ms": 1347.294457955286
+    },
+    {
+      "case_id": "g017",
+      "kind": "comparison",
+      "abstain": false,
+      "rank_fused": 1,
+      "rank_reranked": 1,
+      "score_top1": 0.9965373236661641,
+      "n_truncated": 11,
+      "latency_ms": 1333.6480419384316
+    },
+    {
+      "case_id": "g018",
+      "kind": "comparison",
+      "abstain": false,
+      "rank_fused": 1,
+      "rank_reranked": 1,
+      "score_top1": 0.9991357760353675,
+      "n_truncated": 9,
+      "latency_ms": 1333.5677500581369
+    },
+    {
+      "case_id": "g019",
+      "kind": "definition",
+      "abstain": false,
+      "rank_fused": 1,
+      "rank_reranked": 1,
+      "score_top1": 0.9097944436718921,
+      "n_truncated": 6,
+      "latency_ms": 1376.4115419471636
+    },
+    {
+      "case_id": "g020",
+      "kind": "how-to",
+      "abstain": false,
+      "rank_fused": 1,
+      "rank_reranked": 1,
+      "score_top1": 0.6765618076734558,
+      "n_truncated": 10,
+      "latency_ms": 1354.9000420607626
+    },
+    {
+      "case_id": "g021",
+      "kind": "how-to",
+      "abstain": false,
+      "rank_fused": 1,
+      "rank_reranked": 1,
+      "score_top1": 0.99382618242061,
+      "n_truncated": 9,
+      "latency_ms": 1371.5289999963716
+    },
+    {
+      "case_id": "g022",
+      "kind": "code",
+      "abstain": false,
+      "rank_fused": 1,
+      "rank_reranked": 4,
+      "score_top1": 0.4734991139273641,
+      "n_truncated": 8,
+      "latency_ms": 1342.8781669354066
+    },
+    {
+      "case_id": "g023",
+      "kind": "definition",
+      "abstain": false,
+      "rank_fused": 1,
+      "rank_reranked": 1,
+      "score_top1": 0.9639024466794656,
+      "n_truncated": 9,
+      "latency_ms": 1340.245374944061
+    },
+    {
+      "case_id": "g024",
+      "kind": "comparison",
+      "abstain": false,
+      "rank_fused": 2,
+      "rank_reranked": 1,
+      "score_top1": 0.4044022569224814,
+      "n_truncated": 6,
+      "latency_ms": 1333.6044170428067
+    },
+    {
+      "case_id": "g025",
+      "kind": "comparison",
+      "abstain": false,
+      "rank_fused": 1,
+      "rank_reranked": 1,
+      "score_top1": 0.965791856743347,
+      "n_truncated": 7,
+      "latency_ms": 1348.5267080832273
+    },
+    {
+      "case_id": "g026",
+      "kind": "definition",
+      "abstain": false,
+      "rank_fused": 2,
+      "rank_reranked": 1,
+      "score_top1": 0.9952013181767144,
+      "n_truncated": 7,
+      "latency_ms": 1408.4905829513445
+    },
+    {
+      "case_id": "g027",
+      "kind": "code",
+      "abstain": false,
+      "rank_fused": 1,
+      "rank_reranked": 1,
+      "score_top1": 0.980485150002637,
+      "n_truncated": 12,
+      "latency_ms": 1368.7409579288214
+    },
+    {
+      "case_id": "g028",
+      "kind": "code",
+      "abstain": false,
+      "rank_fused": 1,
+      "rank_reranked": 1,
+      "score_top1": 0.7205941994094217,
+      "n_truncated": 7,
+      "latency_ms": 1366.1927910288796
+    },
+    {
+      "case_id": "g029",
+      "kind": "how-to",
+      "abstain": false,
+      "rank_fused": 1,
+      "rank_reranked": 1,
+      "score_top1": 0.9973242124506771,
+      "n_truncated": 5,
+      "latency_ms": 1358.9428750565276
+    },
+    {
+      "case_id": "g030",
+      "kind": "how-to",
+      "abstain": false,
+      "rank_fused": 1,
+      "rank_reranked": 1,
+      "score_top1": 0.9855708277049386,
+      "n_truncated": 5,
+      "latency_ms": 1336.1712499754503
+    },
+    {
+      "case_id": "o001",
+      "kind": "offtopic",
+      "abstain": true,
+      "rank_fused": null,
+      "rank_reranked": null,
+      "score_top1": 0.000606296704771757,
+      "n_truncated": 5,
+      "latency_ms": 1334.0865419013426
+    },
+    {
+      "case_id": "o002",
+      "kind": "offtopic",
+      "abstain": true,
+      "rank_fused": null,
+      "rank_reranked": null,
+      "score_top1": 4.7526301174620486e-05,
+      "n_truncated": 7,
+      "latency_ms": 1341.6292499750853
+    },
+    {
+      "case_id": "o003",
+      "kind": "offtopic",
+      "abstain": true,
+      "rank_fused": null,
+      "rank_reranked": null,
+      "score_top1": 3.744641611707681e-05,
+      "n_truncated": 8,
+      "latency_ms": 1348.6842080019414
+    },
+    {
+      "case_id": "o004",
+      "kind": "offtopic",
+      "abstain": true,
+      "rank_fused": null,
+      "rank_reranked": null,
+      "score_top1": 3.745070160403342e-05,
+      "n_truncated": 10,
+      "latency_ms": 1336.3303749356419
+    },
+    {
+      "case_id": "o005",
+      "kind": "offtopic",
+      "abstain": true,
+      "rank_fused": null,
+      "rank_reranked": null,
+      "score_top1": 3.744084571712839e-05,
+      "n_truncated": 7,
+      "latency_ms": 1353.1328330282122
+    },
+    {
+      "case_id": "o006",
+      "kind": "offtopic",
+      "abstain": true,
+      "rank_fused": null,
+      "rank_reranked": null,
+      "score_top1": 4.211318478417595e-05,
+      "n_truncated": 12,
+      "latency_ms": 1336.7152919527143
+    },
+    {
+      "case_id": "o007",
+      "kind": "offtopic",
+      "abstain": true,
+      "rank_fused": null,
+      "rank_reranked": null,
+      "score_top1": 3.7455559082124935e-05,
+      "n_truncated": 4,
+      "latency_ms": 1343.433291069232
+    },
+    {
+      "case_id": "o008",
+      "kind": "offtopic",
+      "abstain": true,
+      "rank_fused": null,
+      "rank_reranked": null,
+      "score_top1": 9.472971575949083e-05,
+      "n_truncated": 10,
+      "latency_ms": 1341.3553329883143
+    },
+    {
+      "case_id": "o009",
+      "kind": "offtopic",
+      "abstain": true,
+      "rank_fused": null,
+      "rank_reranked": null,
+      "score_top1": 4.2391529793100735e-05,
+      "n_truncated": 9,
+      "latency_ms": 1343.5819159494713
+    },
+    {
+      "case_id": "o010",
+      "kind": "offtopic",
+      "abstain": true,
+      "rank_fused": null,
+      "rank_reranked": null,
+      "score_top1": 3.743249167079692e-05,
+      "n_truncated": 5,
+      "latency_ms": 1343.7842919956893
+    }
+  ]
+}

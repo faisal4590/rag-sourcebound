@@ -131,7 +131,7 @@ def test_every_spec_section_is_typed() -> None:
     assert s.retrieval.top_k_sparse == 30
     assert s.retrieval.rrf_k == 60
     assert s.retrieval.top_k_fused == 30
-    assert s.rerank.model == "BAAI/bge-reranker-v2-m3"
+    assert s.rerank.model == "BAAI/bge-reranker-base"
     assert s.rerank.top_n == 8
     assert s.rerank.batch_size == 16
     assert (s.gate.tau_low, s.gate.tau_pass, s.gate.tau_high) == (0.20, 0.35, 0.60)

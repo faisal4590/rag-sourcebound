@@ -10,6 +10,9 @@ above `gate.tau_pass`, off-topic below `gate.tau_low`), and the p50 / p95 latenc
 stage on this machine.
 
     uv run python eval/rerank_eval.py --json eval/runs/rerank_<date>.json
+    uv run python eval/rerank_eval.py --rerank-model BAAI/bge-reranker-base   # trial run
+
+A trial keeps the file's `config_hash` on its spans; the report names the values that ran.
 """
 
 from __future__ import annotations
@@ -138,6 +141,10 @@ def report(rows: Sequence[dict[str, Any]], settings: Settings, device: str) -> d
             "max": max(latencies, default=0.0),
         },
         "device": device,
+        "config_hash": settings.config_hash,
+        "rerank_model": settings.rerank.model,
+        "max_length": settings.rerank.max_length,
+        "top_k_fused": settings.retrieval.top_k_fused,
         "rows": list(rows),
     }
 
@@ -164,11 +171,40 @@ def print_table(rep: dict[str, Any]) -> None:
     )
 
 
+def with_overrides(settings: Settings, args: argparse.Namespace) -> Settings:
+    """Return a copy of the settings with the command-line trial values applied, validated like
+    the file. `config_hash` stays the file's: the report names the values that ran."""
+    rerank_update = {
+        k: v
+        for k, v in (("model", args.rerank_model), ("max_length", args.max_length))
+        if v is not None
+    }
+    update: dict[str, Any] = {}
+    if rerank_update:
+        update["rerank"] = type(settings.rerank).model_validate(
+            {**settings.rerank.model_dump(), **rerank_update}
+        )
+    if args.top_k_fused is not None:
+        update["retrieval"] = type(settings.retrieval).model_validate(
+            {**settings.retrieval.model_dump(), "top_k_fused": args.top_k_fused}
+        )
+    return settings.model_copy(update=update) if update else settings
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--json", type=Path, default=None)
+    parser.add_argument(
+        "--rerank-model", default=None, help="try another reranker without editing config.yaml"
+    )
+    parser.add_argument(
+        "--max-length", type=int, default=None, help="try another `rerank.max_length`"
+    )
+    parser.add_argument(
+        "--top-k-fused", type=int, default=None, help="try another `retrieval.top_k_fused`"
+    )
     args = parser.parse_args(argv)
-    settings = load_settings()
+    settings = with_overrides(load_settings(), args)
     tracing.configure_tracing(settings)
     cases = [*read_jsonl(GOLDEN, EvalCase), *read_jsonl(OFFTOPIC, EvalCase)]
     deps = build_deps(settings)
