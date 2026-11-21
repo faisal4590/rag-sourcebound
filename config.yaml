@@ -166,9 +166,10 @@ feedback:
   enabled: true                  # Stage 18: CLI keypress and POST /feedback
 
 cache:
-  semantic_enabled: false        # Milestone 7
+  semantic_enabled: false        # Milestone 7 (issue #40): true turns the answer cache on
   similarity_threshold: 0.97
   ttl_hours: 168
+  store_path: data/cache/answers.sqlite   # Stage 18 writes, the Stage 19 lookup reads
 
 trace:
   exporter_endpoint: http://localhost:6006/v1/traces

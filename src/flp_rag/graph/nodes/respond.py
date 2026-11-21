@@ -38,10 +38,12 @@ from typing import Any
 import structlog
 
 from flp_rag.contracts import Candidate, Response, ResponseStatus, Source
+from flp_rag.graph.cache import store_answer
 from flp_rag.graph.markers import canonical_markers, find_markers
 from flp_rag.graph.nodes.generate import prompt_version
 from flp_rag.graph.state import RagState
 from flp_rag.settings import ABSTAIN_TEXT, Settings
+from flp_rag.stores.answer_cache import AnswerCache
 from flp_rag.stores.session_store import SessionStore
 from flp_rag.tracing import current_span
 
@@ -198,7 +200,10 @@ def build_response(
         status = state.get("status")
         if status not in ("answered", "no_information", "error"):
             raise ValueError(f"the final state has no status to respond with: {status!r}")
-        if status == "answered":
+        if status == "answered" and state.get("cache_hit"):
+            # Stage 19: the cached response carries its sources; no label map exists
+            answer, sources = str(state.get("answer", "")), list(state.get("sources", []))
+        elif status == "answered":
             answer = canonical_markers(str(state.get("answer", "")))
             sources = sources_for(answer, state.get("label_map", {}), state.get("candidates", []))
         else:
@@ -296,7 +301,9 @@ def record_turn(state: Mapping[str, Any], response: Response, sessions: SessionS
 
 
 def make_respond(
-    settings: Settings, sessions: SessionStore | None = None
+    settings: Settings,
+    sessions: SessionStore | None = None,
+    answers: AnswerCache | None = None,
 ) -> Callable[[RagState], dict[str, Any]]:
     def respond_node(state: RagState) -> dict[str, Any]:
         response = build_response(state, settings)
@@ -305,6 +312,7 @@ def make_respond(
         span.set_attribute("rag.n_sources", len(response.sources))
         span.set_attribute("rag.answer_chars", len(response.answer))
         span.set_attribute("rag.session_turn", record_turn(state, response, sessions))
+        span.set_attribute("cache.stored", store_answer(state, response, answers, settings))
         log_request(summarize(state, response, settings))
         return {
             "status": response.status,

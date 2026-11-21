@@ -1,17 +1,21 @@
 # StateGraph wiring for Stages 9-18. The gate node returns "pass" or "abstain" as a conditional edge. compile() lives here.
 """The query graph.
 
-    guard_input -> understand -> retrieve -> rerank -> gate -> assemble -> generate -> check_output
-                        |                                 |                     ^           |
-                        +-> respond (smalltalk)           +-> respond (abstain) +- (repair) +-> respond
+    guard_input -> [cache_lookup] -> understand -> retrieve -> rerank -> gate -> assemble
+                         |                |                                  |
+                         +-> respond (hit)+-> respond (smalltalk)            +-> respond (abstain)
+    assemble -> generate -> check_output -> respond
+                    ^              |
+                    +-- (repair) --+
 
 Each node is a plain function `RagState -> partial state`. `build_graph` wraps every node in
 one `@stage` span with the name from spec Section 7.4, so the nodes themselves stay free of
 tracing code. The root span `rag.request` is opened by the caller (Stage 9, or `flp ask`)
 before `invoke`, so the node spans become its children.
 
-`GraphNodes` names the nine node functions. Tests pass stubs. `default_nodes` wires the real
-implementations.
+`GraphNodes` names the nine node functions plus the optional Stage 19 `cache_lookup` (issue
+#40), present only when `cache.semantic_enabled` is true and an answer store exists. Tests pass
+stubs. `default_nodes` wires the real implementations.
 """
 
 import inspect
@@ -25,6 +29,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from qdrant_client import QdrantClient
 
+from flp_rag.graph import cache as cache_mod
 from flp_rag.graph.nodes import assemble as assemble_mod
 from flp_rag.graph.nodes import check_output as check_mod
 from flp_rag.graph.nodes import gate as gate_mod
@@ -41,9 +46,11 @@ from flp_rag.models import (
     Reranker,
     SparseEmbedder,
     get_chat_model,
+    get_embeddings,
     get_reranker,
 )
 from flp_rag.settings import Settings
+from flp_rag.stores.answer_cache import AnswerCache
 from flp_rag.stores.embedding_cache import EmbeddingCache
 from flp_rag.stores.session_store import SessionStore
 from flp_rag.tracing import stage
@@ -61,8 +68,9 @@ SPANS: dict[str, tuple[str, str]] = {
     "generate": ("llm.generate", "LLM"),
     "check_output": ("guardrails.output", "CHAIN"),
     "respond": ("response.build", "CHAIN"),
+    "cache_lookup": ("cache.lookup", "CHAIN"),  # Stage 19, optional
 }
-NODE_ORDER = tuple(SPANS)
+NODE_ORDER = tuple(name for name in SPANS if name != cache_mod.CACHE_NODE)  # the nine stages
 
 
 @dataclass(frozen=True)
@@ -76,9 +84,13 @@ class GraphNodes:
     generate: Node
     check_output: Node
     respond: Node
+    cache_lookup: Node | None = None  # Stage 19 (issue #40); None = no cache in the graph
 
     def as_dict(self) -> dict[str, Node]:
-        return {name: getattr(self, name) for name in NODE_ORDER}
+        nodes = {name: getattr(self, name) for name in NODE_ORDER}
+        if self.cache_lookup is not None:
+            nodes[cache_mod.CACHE_NODE] = self.cache_lookup
+        return nodes
 
 
 # --------------------------------------------------------------------------- routing
@@ -138,7 +150,15 @@ def build_graph(nodes: GraphNodes) -> CompiledStateGraph:
     for name, fn in nodes.as_dict().items():
         graph.add_node(name, _traced(name, fn))
     graph.add_edge(START, "guard_input")
-    graph.add_edge("guard_input", "understand")
+    if nodes.cache_lookup is not None:  # Stage 19: a hit answers without Stages 11-17
+        graph.add_edge("guard_input", cache_mod.CACHE_NODE)
+        graph.add_conditional_edges(
+            cache_mod.CACHE_NODE,
+            cache_mod.route_after_cache,
+            {"understand": "understand", "respond": "respond"},
+        )
+    else:
+        graph.add_edge("guard_input", "understand")
     graph.add_conditional_edges(
         "understand", route_after_understand, {"retrieve": "retrieve", "respond": "respond"}
     )
@@ -175,12 +195,14 @@ class Deps:
     judge: ChatModel | None = None  # the faithfulness judge; from output.judge_model when None
     query_chat: ChatModel | None = None  # the Stage 11 small model; from query.model when None
     sessions: SessionStore | None = None  # conversation turns; Stage 18 writes, Stage 11 reads
+    answers: AnswerCache | None = None  # Stage 19 answer cache; Stage 18 writes, the lookup reads
     extra: dict[str, Any] = field(default_factory=dict)
 
 
 def default_nodes(deps: Deps) -> GraphNodes:
     """Real: guard_input (#18), understand (#27), retrieve (hybrid, #25), rerank (#26), gate
-    (#19), assemble (#20), generate (#21), check_output (#22), respond (#23)."""
+    (#19), assemble (#20), generate (#21), check_output (#22), respond (#23), and the Stage 19
+    lookup (#40) when the cache is on and `deps.answers` is open."""
     s = deps.settings
 
     guard_input = guard_mod.make_guard_input(s)
@@ -197,7 +219,12 @@ def default_nodes(deps: Deps) -> GraphNodes:
         s, lambda: deps.judge or get_chat_model(s, "judge")
     )
     rerank = rerank_mod.make_rerank(s, lambda: deps.reranker or get_reranker(s), deps.store_path)
-    respond = respond_mod.make_respond(s, deps.sessions)
+    respond = respond_mod.make_respond(s, deps.sessions, deps.answers)
+    cache_lookup = None
+    if s.cache.semantic_enabled and deps.answers is not None:
+        cache_lookup = cache_mod.make_cache_lookup(
+            s, deps.answers, lambda: _embedder(deps), deps.cache, deps.sessions
+        )
 
     def retrieve(state: RagState) -> dict[str, Any]:
         candidates = retrieve_mod.retrieve_hybrid(
@@ -217,8 +244,24 @@ def default_nodes(deps: Deps) -> GraphNodes:
         return out
 
     return GraphNodes(
-        guard_input, understand, retrieve, rerank, gate, assemble, generate, check_output, respond
+        guard_input,
+        understand,
+        retrieve,
+        rerank,
+        gate,
+        assemble,
+        generate,
+        check_output,
+        respond,
+        cache_lookup=cache_lookup,
     )
+
+
+def _embedder(deps: Deps) -> Embedder:
+    """The dense embedder, built from `embed.model` on first use when `Deps` has none."""
+    if deps.embedder is None:
+        deps.embedder = get_embeddings(deps.settings)
+    return deps.embedder
 
 
 def compile_default(deps: Deps) -> CompiledStateGraph:
