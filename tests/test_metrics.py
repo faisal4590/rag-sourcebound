@@ -96,8 +96,10 @@ def test_every_spec_metric_appears_in_the_exporter_output(readers) -> None:
     got = points(reader)
     assert SPEC_METRICS <= set(got), sorted(SPEC_METRICS - set(got))
     requests = {tuple(sorted(p.attributes.items())): p.value for p in got["rag.requests"]}
-    assert requests[(("abstain_reason", "none"), ("cache.hit", False), ("status", "answered"))] == 1
-    assert requests[(("abstain_reason", "none"), ("cache.hit", False), ("status", "error"))] == 1
+    route = ("http.route", "none")  # the fake request sets no route; the API sets "/ask"
+    base = (("abstain_reason", "none"), ("cache.hit", False), route)
+    assert requests[(*base, ("status", "answered"))] == 1
+    assert requests[(*base, ("status", "error"))] == 1
     tokens = {
         (p.attributes["direction"], p.attributes["gen_ai.request.model"]): p.value
         for p in got["rag.tokens"]

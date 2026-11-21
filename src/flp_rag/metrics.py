@@ -5,7 +5,7 @@ Every metric of spec 7.7 is derived from finished spans by one span processor, s
 counted twice and the code never counts what the trace already holds:
 
 | metric | from |
-| `rag.requests` (status, abstain_reason, cache.hit) | the root span `rag.request` |
+| `rag.requests` (status, abstain_reason, cache.hit, http.route) | the root span `rag.request` |
 | `rag.stage.latency_ms` (span.name) | every span |
 | `rag.tokens` (gen_ai.request.model, direction, span.name) | `LLM` spans |
 | `rag.cost_usd` (gen_ai.request.model) | `LLM` spans and `embed.batch` |
@@ -188,6 +188,7 @@ class SpanMetricsProcessor(SpanProcessor):
                     "status": str(attrs.get("rag.status", "none")),
                     "abstain_reason": str(attrs.get("rag.abstain_reason", "none")),
                     "cache.hit": bool(attrs.get("cache.hit", False)),
+                    "http.route": str(attrs.get("http.route", "none")),
                 },
             )
         model = str(attrs.get("gen_ai.request.model", "none"))
