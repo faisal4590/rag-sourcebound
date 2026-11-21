@@ -284,7 +284,69 @@ def ask(
     else:
         typer.echo(render(payload, debug=debug, color=color))
     status = payload.get("status", "error") if response.status_code < 400 else "error"
+    if not json_out and status != "error":
+        prompt_feedback(url, payload.get("trace_id"), settings)
     raise typer.Exit(code=exit_code(status))
+
+
+# --------------------------------------------------------------------------- feedback (#31)
+
+FEEDBACK_PROMPT = "Helpful? [u]p / [d]own / Enter to skip: "
+_RATINGS = {"u": "up", "d": "down"}
+
+
+def interactive() -> bool:
+    """The prompt needs a terminal on both ends: no prompt in a pipe or a script."""
+    return sys.stdin.isatty() and sys.stdout.isatty()
+
+
+def read_key() -> str:
+    """One keypress without Enter (cbreak mode, so Ctrl-C still interrupts); Enter is the skip."""
+    import termios
+    import tty
+
+    fd = sys.stdin.fileno()
+    saved = termios.tcgetattr(fd)
+    try:
+        tty.setcbreak(fd)
+        return sys.stdin.read(1)
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, saved)
+
+
+def rating_for(key: str) -> str | None:
+    return _RATINGS.get(key.lower()) if key else None
+
+
+def prompt_feedback(url: str, trace_id: str | None, settings: Settings) -> None:
+    """Stage 18 rule 5: ask once after the answer, post the rating with the response's trace
+    id, print one line, and never change the exit code. Silent when `feedback.enabled` is
+    false, when either end is not a terminal, or when the record has no trace id."""
+    if not settings.feedback.enabled or not trace_id or not interactive():
+        return
+    typer.echo(FEEDBACK_PROMPT, nl=False, err=True)  # stderr: stdout holds the answer alone
+    try:
+        key = read_key()
+    except (KeyboardInterrupt, EOFError, OSError, Exception):  # noqa: BLE001 - a lost tty is a skip
+        key = ""
+    typer.echo("", err=True)
+    rating = rating_for(key)
+    if rating is None:
+        return
+    try:
+        with httpx.Client(
+            base_url=url, timeout=settings.feedback.timeout_s, transport=http_transport
+        ) as client:
+            r = client.post("/feedback", json={"trace_id": trace_id, "rating": rating})
+            r.raise_for_status()
+            recorded = bool(r.json().get("recorded"))
+    except (httpx.HTTPError, ValueError) as exc:
+        typer.echo(f"feedback not sent: {type(exc).__name__}", err=True)
+        return
+    if recorded:
+        typer.echo(f"feedback sent: {rating}", err=True)
+    else:
+        typer.echo("feedback not recorded: the trace is not in Phoenix yet", err=True)
 
 
 @app.command()

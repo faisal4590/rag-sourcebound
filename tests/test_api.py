@@ -103,10 +103,21 @@ def exporter() -> InMemorySpanExporter:
 
 @contextlib.contextmanager
 def _client(
-    tmp_path: Path, exporter: InMemorySpanExporter, *, alias: bool = True, **factory_kw: Any
+    tmp_path: Path,
+    exporter: InMemorySpanExporter,
+    *,
+    alias: bool = True,
+    extra: dict[str, Any] | None = None,
+    feedback_enabled: bool = True,
+    **factory_kw: Any,
 ) -> Iterator[tuple[TestClient, str]]:
-    """A test client over an in-memory Qdrant whose alias points at a collection with a manifest."""
+    """A test client over an in-memory Qdrant whose alias points at a collection with a manifest.
+    `extra` lands in `Deps.extra` (a fake Phoenix transport for `/feedback`, issue #31)."""
     settings = load_settings().model_copy(update={"config_path": tmp_path / "config.yaml"})
+    if not feedback_enabled:
+        settings = settings.model_copy(
+            update={"feedback": settings.feedback.model_copy(update={"enabled": False})}
+        )
     (tmp_path / "config.yaml").write_text((ROOT / "config.yaml").read_text())
     prompt_dir = tmp_path / "prompts"
     prompt_dir.mkdir()
@@ -132,7 +143,7 @@ def _client(
                 )
             ]
         )
-    deps = build.Deps(settings=settings, client=client)
+    deps = build.Deps(settings=settings, client=client, extra=dict(extra or {}))
     app = api.create_app(
         settings,
         deps=deps,
