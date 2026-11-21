@@ -218,9 +218,9 @@
       <td>${esc(s.chapter_no)}. ${esc(s.chapter_title)}</td>
       <td>${esc(s.section_title)}</td>
       <td class="num">${esc(s.page_printed_start)}${s.page_printed_end !== s.page_printed_start ? "&ndash;" + esc(s.page_printed_end) : ""}</td>
-      <td class="num">${Number(s.score).toFixed(3)}</td></tr>`).join("");
+      <td class="num" title="relevance of the best chunk of this source">${Number(s.score).toFixed(3)}</td></tr>`).join("");
     return `<details open><summary>${sources.length} source${sources.length > 1 ? "s" : ""}, printed pages</summary>
-      <table><thead><tr><th>Label</th><th>Chapter</th><th>Section</th><th>Pages</th><th>Score</th></tr></thead><tbody>${rows}</tbody></table></details>`;
+      <table><thead><tr><th>Label</th><th>Chapter</th><th>Section</th><th>Pages</th><th title="Stage 13 cross-encoder (bge-reranker-base): how well the chunk answers the question, 0 to 1. The gate passes 0.35 and up.">Reranker relevance (0&ndash;1)</th></tr></thead><tbody>${rows}</tbody></table></details>`;
   }
   function debugPanel(d) {
     if (!d) return "";
