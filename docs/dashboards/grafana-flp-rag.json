@@ -1,0 +1,349 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_PROMETHEUS",
+      "label": "Prometheus",
+      "type": "datasource",
+      "pluginId": "prometheus"
+    }
+  ],
+  "title": "Front Line PHP RAG",
+  "uid": "flp-rag",
+  "tags": [
+    "flp-rag",
+    "spec-7.9"
+  ],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "refresh": "1m",
+  "templating": {
+    "list": [
+      {
+        "name": "DS_PROMETHEUS",
+        "label": "Prometheus",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {},
+        "hide": 0,
+        "refresh": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "1. Requests and outcomes per hour, by status and abstain reason",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (status, abstain_reason) (increase(rag_requests{http_route=\"/ask\"}[1h]))",
+          "legendFormat": "{{status}} {{abstain_reason}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "2. Latency by stage: p50 per span, p95 of rag.request",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 24,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.50, sum by (le, span_name) (rate(rag_stage_latency_ms_bucket[5m])))",
+          "legendFormat": "p50 {{span_name}}"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(rag_stage_latency_ms_bucket{span_name=\"rag.request\"}[5m])))",
+          "legendFormat": "p95 rag.request"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "p95 rag.request"
+            },
+            "properties": [
+              {
+                "id": "custom.stacking",
+                "value": {
+                  "mode": "none"
+                }
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 3,
+      "title": "3. Quality: rerank top-1 score, faithfulness fail rate, retriever overlap",
+      "type": "heatmap",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 17,
+        "w": 8,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (le) (increase(rag_rerank_score_top1_bucket[1h]))",
+          "legendFormat": "{{le}}",
+          "format": "heatmap"
+        }
+      ],
+      "options": {
+        "calculate": false,
+        "yAxis": {
+          "unit": "none"
+        },
+        "rowsFrame": {
+          "layout": "le"
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "3b. Faithfulness fail rate, 1 h",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 17,
+        "w": 8,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(rag_requests{http_route=\"/ask\", abstain_reason=\"output.unfaithful\"}[1h])) / clamp_min(sum(increase(rag_requests{http_route=\"/ask\", status=\"answered\"}[1h])) + sum(increase(rag_requests{http_route=\"/ask\", abstain_reason=\"output.unfaithful\"}[1h])), 1)",
+          "legendFormat": "unfaithful / (answered + unfaithful); understates the judged rate, exact in eval/dashboard.py"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "max": 1,
+          "min": 0
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "3c. Dense and sparse overlap ratio",
+      "type": "heatmap",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 17,
+        "w": 8,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (le) (increase(rag_retrieval_overlap_ratio_bucket[1h]))",
+          "legendFormat": "{{le}}",
+          "format": "heatmap"
+        }
+      ],
+      "options": {
+        "calculate": false,
+        "rowsFrame": {
+          "layout": "le"
+        },
+        "yAxis": {
+          "unit": "none"
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "4. Cost per hour by model (USD)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 8,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (gen_ai_request_model) (increase(rag_cost_usd[1h]))",
+          "legendFormat": "USD {{gen_ai_request_model}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "title": "4b. Tokens per /ask request, 1 h",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 26,
+        "w": 8,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(rag_tokens[1h])) / clamp_min(sum(increase(rag_requests{http_route=\"/ask\"}[1h])), 1)",
+          "legendFormat": "tokens per request (over every /ask request; eval/dashboard.py averages over the requests that called a model)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        }
+      }
+    },
+    {
+      "id": 7,
+      "title": "4c. Cache hit rate, 1 h",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 26,
+        "w": 8,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(rag_requests{http_route=\"/ask\", cache_hit=\"true\"}[1h])) / clamp_min(sum(increase(rag_requests{http_route=\"/ask\"}[1h])), 1)",
+          "legendFormat": "cache hit rate"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "max": 1,
+          "min": 0
+        }
+      }
+    },
+    {
+      "id": 8,
+      "title": "5. User feedback per day",
+      "type": "barchart",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 35,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (rating) (increase(rag_user_feedback[1d]))",
+          "legendFormat": "{{rating}}"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "5b. Golden-set scores per index and prompt version",
+      "type": "table",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 35,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "flp_eval_metric{metric=~\"recall_at_5|mrr_at_10|faithfulness|correctness|abstain_f1|p95_latency_s\"}",
+          "legendFormat": "{{metric}} {{index_version}} {{prompt_version}}"
+        }
+      ],
+      "description": "The evaluation harness writes eval/runs/*.json, not metrics. Publish them as the gauge `flp_eval_metric{metric, index_version, prompt_version, golden_version}` from a small exporter job, or read the same table from `make dashboard` (eval/dashboard.py, panel 5)."
+    }
+  ]
+}

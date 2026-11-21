@@ -262,6 +262,22 @@ class FeedbackConfig(_Section):
     max_comment_chars: int = Field(default=2000, gt=0)
 
 
+class AlertsConfig(_Section):
+    """The five alert rules of spec 7.10 (issue #32), evaluated by `eval/dashboard.py --alerts`
+    and mirrored in `docs/dashboards/alerts.yaml`."""
+
+    abstain_rate_max: float = Field(ge=0, le=1)
+    abstain_min_requests: int = Field(ge=0)
+    abstain_window_hours: float = Field(gt=0)
+    p95_latency_max_s: float = Field(gt=0)
+    p95_window_minutes: float = Field(gt=0)
+    errors_max: int = Field(ge=0)
+    errors_window_minutes: float = Field(gt=0)
+    faithfulness_fail_rate_max: float = Field(ge=0, le=1)
+    faithfulness_window_hours: float = Field(gt=0)
+    cost_max_usd_per_day: float = Field(gt=0)
+
+
 class CacheConfig(_Section):
     semantic_enabled: bool = False
     similarity_threshold: float = Field(ge=0, le=1)
@@ -372,6 +388,7 @@ class Settings(_Section):
     gen: GenConfig
     output: OutputConfig
     feedback: FeedbackConfig
+    alerts: AlertsConfig
     cache: CacheConfig
     trace: TraceConfig
     eval: EvalConfig
