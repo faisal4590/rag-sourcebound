@@ -6,6 +6,7 @@ One live test hits /health against the running services and skips without them.
 
 import contextlib
 import json
+import re
 import time
 from collections.abc import Iterator
 from pathlib import Path
@@ -20,6 +21,7 @@ from flp_rag import tracing
 from flp_rag.api import app as api
 from flp_rag.contracts import Source
 from flp_rag.graph import build
+from flp_rag.graph.nodes import respond as respond_mod
 from flp_rag.graph.state import RagState
 from flp_rag.settings import ABSTAIN_TEXT, load_settings
 from tests.test_graph_build import stub_nodes
@@ -74,6 +76,8 @@ def _stub_graph_factory(
                 if state.get("debug")
                 else None,
             )
+            # the one INFO line per request that the real Stage 18 writes (issue #30 reads it)
+            respond_mod.log_request(respond_mod.summarize(state, response, deps.settings))
             return {"status": status, "response": response, "sources": sources}
 
         return build.build_graph(
@@ -99,10 +103,21 @@ def exporter() -> InMemorySpanExporter:
 
 @contextlib.contextmanager
 def _client(
-    tmp_path: Path, exporter: InMemorySpanExporter, *, alias: bool = True, **factory_kw: Any
+    tmp_path: Path,
+    exporter: InMemorySpanExporter,
+    *,
+    alias: bool = True,
+    extra: dict[str, Any] | None = None,
+    feedback_enabled: bool = True,
+    **factory_kw: Any,
 ) -> Iterator[tuple[TestClient, str]]:
-    """A test client over an in-memory Qdrant whose alias points at a collection with a manifest."""
+    """A test client over an in-memory Qdrant whose alias points at a collection with a manifest.
+    `extra` lands in `Deps.extra` (a fake Phoenix transport for `/feedback`, issue #31)."""
     settings = load_settings().model_copy(update={"config_path": tmp_path / "config.yaml"})
+    if not feedback_enabled:
+        settings = settings.model_copy(
+            update={"feedback": settings.feedback.model_copy(update={"enabled": False})}
+        )
     (tmp_path / "config.yaml").write_text((ROOT / "config.yaml").read_text())
     prompt_dir = tmp_path / "prompts"
     prompt_dir.mkdir()
@@ -128,7 +143,7 @@ def _client(
                 )
             ]
         )
-    deps = build.Deps(settings=settings, client=client)
+    deps = build.Deps(settings=settings, client=client, extra=dict(extra or {}))
     app = api.create_app(
         settings,
         deps=deps,
@@ -139,7 +154,132 @@ def _client(
         yield client, version
 
 
+# --------------------------------------------------------------------------- the chat page
+
+
+def test_root_serves_the_chat_page(tmp_path: Path, exporter: InMemorySpanExporter) -> None:
+    """The page is one static file: no build step, no CDN, no new dependency."""
+    with _client(tmp_path, exporter) as (client, _):
+        r = client.get("/")
+        assert r.status_code == 200 and r.headers["content-type"].startswith("text/html")
+        page = r.text
+        assert "<title>Front Line PHP</title>" in page
+        assert 'fetch("/ask"' in page and 'fetch("/health")' in page and "session_id" in page
+        assert re.findall(r'(?:src|href)="https?:', page) == []  # no CDN, no external asset
+        assert r.headers["Cache-Control"] == "no-cache"
+        assert "script-src 'unsafe-inline'" in r.headers["Content-Security-Policy"]
+        assert len(r.headers["X-Trace-Id"]) == 32  # the middleware traces this request too
+        assert client.get("/health").status_code == 200  # the other routes are untouched
+
+
+# --------------------------------------------------------------------------- the log lines (#30)
+
+
+def _json_lines(text: str) -> list[dict[str, Any]]:
+    return [json.loads(line) for line in text.splitlines() if line.startswith("{")]
+
+
+def test_the_request_line_is_json_with_the_trace_id_of_the_response(
+    tmp_path: Path, exporter: InMemorySpanExporter, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Spec 7.8 rules 1-3, the Done-when of issue #30."""
+    tracing.configure_logging()
+    with _client(tmp_path, exporter) as (client, version):
+        r = client.post("/ask", json={"question": "What is a readonly property?"})
+    lines = _json_lines(capsys.readouterr().out)
+    requests = [line for line in lines if line["event"] == "request"]
+    assert len(requests) == 1
+    line = requests[0]
+    assert line["trace_id"] == r.json()["trace_id"] and len(line["span_id"]) == 16
+    root = next(s for s in exporter.get_finished_spans() if s.name == "rag.request")
+    assert line["request_id"] == root.attributes["rag.request_id"]  # the one the middleware minted
+    assert line["index_version"] == version and line["level"] == "info"
+    assert "question" not in json.dumps(line) and "readonly" not in json.dumps(line)
+    assert not [line for line in lines if line["level"] == "debug"]  # no debug lines asked
+
+
+def test_debug_requests_write_one_debug_line_per_stage(
+    tmp_path: Path, exporter: InMemorySpanExporter, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Spec 7.8 rule 4."""
+    tracing.configure_logging()
+    with _client(tmp_path, exporter) as (client, _):
+        client.post("/ask", json={"question": "What is a readonly property?", "debug": True})
+        client.post("/ask", json={"question": "What is a readonly property?"})
+    lines = _json_lines(capsys.readouterr().out)
+    debug = [line for line in lines if line["level"] == "debug"]
+    stages = [line["stage"] for line in debug]
+    assert "guardrails.input" in stages and "response.build" in stages
+    requests = {line["request_id"] for line in debug}
+    assert len(requests) == 1  # only the debug request wrote them
+    assert all(len(line["trace_id"]) == 32 for line in debug)
+
+
+def test_a_failing_stage_writes_one_error_line_without_a_stack_trace(
+    tmp_path: Path, exporter: InMemorySpanExporter, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Spec 7.8 rule 5."""
+    tracing.configure_logging()
+    with _client(tmp_path, exporter, raise_generic=True) as (client, _):
+        r = client.post("/ask", json={"question": "hello"})
+    out = capsys.readouterr().out
+    errors = [line for line in _json_lines(out) if line["level"] == "error"]
+    assert len(errors) == 1 and errors[0]["span"] == "llm.generate"
+    assert errors[0]["exception_type"] == "RuntimeError"
+    assert errors[0]["trace_id"] == r.json()["trace_id"]
+    assert "Traceback" not in out and "exception" not in errors[0]
+
+
 # --------------------------------------------------------------------------- /ask
+
+
+def test_startup_purges_cache_rows_of_other_versions(
+    tmp_path: Path, exporter: InMemorySpanExporter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Stage 19 rule 5 (issue #40): the rows of an old index, prompt, or configuration go at
+    startup; the rows of the current ones stay."""
+    from flp_rag.stores.answer_cache import AnswerCache
+
+    settings = load_settings().model_copy(update={"config_path": tmp_path / "config.yaml"})
+    (tmp_path / "config.yaml").write_text((ROOT / "config.yaml").read_text())
+    prompt_dir = tmp_path / "prompts"
+    prompt_dir.mkdir()
+    (prompt_dir / "answer_v1.md").write_text((ROOT / "prompts" / "answer_v1.md").read_text())
+    version = "v7-test-abcdef01"
+    manifest_dir = tmp_path / "data" / "index" / version
+    manifest_dir.mkdir(parents=True)
+    (manifest_dir / "manifest.json").write_text(json.dumps({"index_version": version}))
+    client = QdrantClient(":memory:")
+    client.create_collection(
+        f"flp_chunks_{version}",
+        vectors_config={"dense": models.VectorParams(size=4, distance=models.Distance.COSINE)},
+    )
+    client.update_collection_aliases(
+        change_aliases_operations=[
+            models.CreateAliasOperation(
+                create_alias=models.CreateAlias(
+                    collection_name=f"flp_chunks_{version}", alias_name=settings.index.alias
+                )
+            )
+        ]
+    )
+    answers = AnswerCache(tmp_path / "answers.sqlite", ttl_hours=168)
+    current = {
+        "index_version": version,
+        "prompt_version": api.prompt_version(settings),
+        "config_hash": settings.config_hash,
+        "embed_model": settings.embed.model,
+    }
+    answers.put([1.0, 0.0], question="keep", answer="A [S1]", sources=[], **current)
+    old = {**current, "index_version": "v6-old"}
+    answers.put([1.0, 0.0], question="old", answer="A [S1]", sources=[], **old)
+    deps = build.Deps(settings=settings, client=client, answers=answers)
+    app = api.create_app(
+        settings, deps=deps, graph_factory=_stub_graph_factory(), configure_tracing=False
+    )
+    with TestClient(app, raise_server_exceptions=False):
+        assert answers.count() == 1
+    answers.close()
 
 
 def test_ask_returns_a_typed_response_with_trace_id(
@@ -169,6 +309,7 @@ def test_ask_returns_a_typed_response_with_trace_id(
         if s.parent and s.parent.span_id == root.context.span_id
     }
     assert {"guardrails.input", "response.build"} <= children
+    assert a["cache.hit"] is False  # Stage 19 (issue #40): the root span says so on every request
 
 
 def test_ask_debug_and_filters_and_abstain(tmp_path: Path, exporter: InMemorySpanExporter) -> None:

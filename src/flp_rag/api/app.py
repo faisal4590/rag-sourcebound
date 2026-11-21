@@ -37,11 +37,13 @@ import structlog
 import uuid_utils
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from langgraph.graph.state import CompiledStateGraph
 from opentelemetry.trace import Status, StatusCode
+from starlette.concurrency import run_in_threadpool
 
-from flp_rag import tracing
+from flp_rag import metrics, tracing
+from flp_rag.api import feedback as feedback_mod
 from flp_rag.api.schemas import (
     AskRequest,
     AskResponse,
@@ -65,9 +67,11 @@ from flp_rag.ingest.s06_s07_index import (
 )
 from flp_rag.models import get_embeddings, get_reranker, get_sparse_embeddings
 from flp_rag.settings import Settings, load_settings
+from flp_rag.stores.answer_cache import AnswerCache
 from flp_rag.stores.embedding_cache import EmbeddingCache
 from flp_rag.stores.session_store import SessionStore
 
+STATIC_DIR = Path(__file__).resolve().parent / "static"  # the chat page (issue #85)
 log = structlog.get_logger()
 
 GraphFactory = Callable[[Deps], CompiledStateGraph]
@@ -125,6 +129,11 @@ def build_deps(settings: Settings) -> Deps:
         ttl_hours=settings.session.ttl_hours,
         excerpt_chars=settings.session.answer_excerpt_chars,
     )
+    answers = (
+        AnswerCache(root / settings.cache.store_path, ttl_hours=settings.cache.ttl_hours)
+        if settings.cache.semantic_enabled
+        else None
+    )
     return Deps(
         settings=settings,
         client=qdrant_client(settings),
@@ -135,6 +144,7 @@ def build_deps(settings: Settings) -> Deps:
         reranker=get_reranker(settings) if settings.rerank.enabled else None,
         cache=cache,
         sessions=sessions,
+        answers=answers,
     )
 
 
@@ -166,13 +176,20 @@ def create_app(
         version, collection = current_index_version(settings, d)
         if version is not None and d.store_path is None:
             d.store_path = default_index_dir(settings) / version / STORE_FILE
+        prompt = prompt_version(settings)
+        if d.answers is not None and version is not None:  # Stage 19 rule 5
+            dropped = d.answers.purge_other_versions(
+                index_version=version, prompt_version=prompt, config_hash=settings.config_hash
+            )
+            expired = d.answers.purge_expired()
+            log.info("answer cache ready", rows=d.answers.count(), dropped=dropped, expired=expired)
         app.state.rag = AppState(
             settings=settings,
             deps=d,
             graph=graph_factory(d),
             index_version=version,
             collection=collection,
-            prompt_version=prompt_version(settings),
+            prompt_version=prompt,
         )
         log.info("api ready", index_version=version, collection=collection, port=settings.api.port)
         yield
@@ -180,6 +197,8 @@ def create_app(
             d.cache.close()
         if owns_deps and d.sessions is not None:
             d.sessions.close()
+        if owns_deps and d.answers is not None:
+            d.answers.close()
         if configure_tracing:
             tracing.shutdown_tracing()
 
@@ -196,22 +215,36 @@ def create_app(
         tracer = tracing.get_tracer()
         with tracer.start_as_current_span(
             "rag.request", record_exception=False, set_status_on_exception=False
-        ) as span:
+        ) as raw_span:
+            span = tracing.RuledSpan(raw_span)  # the attribute rules of issue #29
             request_id = str(uuid_utils.uuid7())
-            trace_id = format(span.get_span_context().trace_id, "032x")
+            trace_id = format(raw_span.get_span_context().trace_id, "032x")
             request.state.request_id, request.state.trace_id = request_id, trace_id
             span.set_attribute("openinference.span.kind", "CHAIN")
             span.set_attribute("rag.request_id", request_id)
             span.set_attribute("http.route", request.url.path)
+            # the registry's required root attributes, with their sentinels until a handler
+            # knows better: a request that never reaches `ask` still carries every key
+            for key, value in (
+                ("rag.session_id", None),
+                ("rag.status", None),
+                ("rag.abstain_reason", None),
+                ("rag.cost_usd", 0.0),
+                ("cache.hit", False),
+            ):
+                span.set_attribute(key, value)
             if st is not None:
-                span.set_attribute("rag.index_version", st.index_version or "")
+                span.set_attribute("rag.index_version", st.index_version)
                 span.set_attribute("rag.prompt_version", st.prompt_version)
                 span.set_attribute("rag.config_hash", st.settings.config_hash)
             started = time.perf_counter()
-            try:
-                response = await call_next(request)
-            except Exception as exc:  # noqa: BLE001 - every failure must answer with a trace id
-                response = _error_response(exc, trace_id, request.url.path)
+            index_version = st.index_version if st is not None else None
+            with tracing.request_context(request_id=request_id, index_version=index_version):
+                # every log line of this request carries request_id and index_version (7.8)
+                try:
+                    response = await call_next(request)
+                except Exception as exc:  # noqa: BLE001 - every failure answers with a trace id
+                    response = _error_response(exc, trace_id, request.url.path)
             span.set_attribute("rag.latency_ms", int((time.perf_counter() - started) * 1000))
             span.set_attribute("http.status_code", response.status_code)
             if response.status_code >= 400:
@@ -226,6 +259,21 @@ def create_app(
         )
         return JSONResponse(status_code=422, content=body.model_dump())
 
+    @app.get("/", include_in_schema=False)
+    async def chat_page() -> FileResponse:
+        """The chat page (issue #85): one static file, served by the API so it needs no second
+        server and no CORS. It posts to `/ask` and reads `/health`."""
+        return FileResponse(
+            STATIC_DIR / "index.html",
+            media_type="text/html",
+            headers={
+                "Cache-Control": "no-cache",  # one file, always the current one
+                # the page is self-contained: inline style and script, calls only this origin
+                "Content-Security-Policy": "default-src 'self'; style-src 'unsafe-inline'; "
+                "script-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'",
+            },
+        )
+
     @app.post(
         "/ask",
         response_model=AskResponse,
@@ -234,8 +282,9 @@ def create_app(
     async def ask(request: Request, body: AskRequest) -> Any:
         st: AppState = request.app.state.rag
         span = tracing.current_span()
-        span.set_attribute("rag.session_id", body.session_id or "")
-        span.set_attribute("rag.question_raw", body.question[:1000])
+        tracing.set_debug(body.debug)  # spec 7.8 rule 4: this request's DEBUG lines pass
+        span.set_attribute("rag.session_id", body.session_id)  # the sentinel without one
+        span.set_attribute("rag.question_raw", body.question)  # content: off with the switch
         run_tag = body.run_tag if body.debug else None  # Part 2 of issue #28
         if run_tag:
             span.set_attribute("rag.run_tag", run_tag)
@@ -279,17 +328,41 @@ def create_app(
             return _early_exit(state, st, exc, status, detail, reason=None)
         response = _response_from_state(final, st)
         span.set_attribute("rag.status", response.status)
-        span.set_attribute("rag.abstain_reason", final.get("abstain_reason") or "")
+        span.set_attribute("rag.abstain_reason", final.get("abstain_reason"))  # sentinel "none"
         span.set_attribute("rag.cost_usd", float(final.get("cost_usd", 0.0)))
+        span.set_attribute("cache.hit", bool(final.get("cache_hit", False)))  # Stage 19
+        if final.get("cache_similarity") is not None:
+            span.set_attribute("cache.similarity", float(final["cache_similarity"]))
         if body.stream:
             return StreamingResponse(_sse(response), media_type="text/event-stream")
         return response
 
     @app.post("/feedback")
     async def feedback(request: Request, body: FeedbackRequest) -> dict[str, Any]:
-        """Milestone 3 stub: accepted and logged. Milestone 5 (#31) writes the score to the trace."""
-        log.info("feedback", trace_id=body.trace_id, rating=body.rating, comment=body.comment or "")
-        return {"ok": True, "trace_id": request.state.trace_id}
+        """Stage 18 rule 4 (issue #31): the rating becomes the `user_feedback` score on the
+        trace it names, written to Phoenix before the answer; `feedback.enabled: false` keeps
+        the endpoint and drops the write. The counter counts every accepted rating."""
+        st: AppState = request.app.state.rag
+        span = tracing.current_span()
+        span.set_attribute("rag.feedback_rating", body.rating)
+        written = "disabled"
+        if st.settings.feedback.enabled:
+            written = await run_in_threadpool(
+                feedback_mod.write_feedback,
+                body.trace_id,
+                body.rating,
+                body.comment,
+                st.settings,
+                transport=st.deps.extra.get("phoenix_transport"),
+            )
+        span.set_attribute("rag.feedback_written", written)
+        log.info("feedback", trace=body.trace_id, rating=body.rating, written=written)
+        metrics.record_feedback(body.rating)  # spec 7.7 `rag.user_feedback` (issue #30)
+        return {
+            "ok": True,
+            "trace_id": request.state.trace_id,
+            "recorded": written == feedback_mod.WRITTEN,
+        }
 
     @app.get("/health", response_model=HealthResponse)
     async def health(request: Request) -> HealthResponse:
@@ -342,7 +415,7 @@ def _record_error(exc: Exception, path: str, trace_id: str) -> None:
     span = tracing.current_span()
     span.record_exception(exc)
     span.set_status(Status(StatusCode.ERROR, f"{type(exc).__name__}: {exc}"[:200]))
-    log.error("request failed", error=f"{type(exc).__name__}: {exc}", path=path, trace_id=trace_id)
+    tracing.log_error_once(exc, span="rag.request")  # quiet when a stage logged it already
 
 
 def error_status(exc: Exception, trace_id: str) -> tuple[int, str]:
@@ -376,8 +449,8 @@ def _early_exit(
     )
     span = tracing.current_span()
     span.set_attribute("rag.status", "error")
-    if reason:
-        span.set_attribute("rag.abstain_reason", reason)
+    span.set_attribute("rag.abstain_reason", reason)  # the sentinel when the error has no code
+    span.set_attribute("rag.cost_usd", float(state.get("cost_usd", 0.0)))
     summary = respond_mod.summarize({**state, "abstain_reason": reason}, contract, st.settings)
     respond_mod.log_request(summary)
     out = AskResponse.from_contract(

@@ -51,3 +51,15 @@ calibrate:     ## threshold sweep of spec 8.4, dry run; write with `flp calibrat
 
 online-judge:  ## spec 8.7: judge a 20% sample of the last day's answers, annotate the traces
 	uv run python eval/online_judge.py
+
+trace-coverage:  ## issue #29: check the traces of a tagged run against the span registry (TAG=...)
+	uv run python eval/trace_coverage.py --tag $(TAG)
+
+dashboard:     ## spec 7.9: the five panels from the Phoenix spans of the last 24 h (HOURS=24)
+	uv run python eval/dashboard.py --hours $(or $(HOURS),24)
+
+alerts:        ## spec 7.10: the five alert rules on the Phoenix spans, exit 1 on an alert
+	uv run python eval/dashboard.py --alerts
+
+trace:         ## spec 7.11: the debug runbook on one trace (TRACE=<trace id>)
+	uv run python eval/trace_show.py $(TRACE)

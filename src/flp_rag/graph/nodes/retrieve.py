@@ -187,7 +187,20 @@ def _batch(
     ]
 
 
+def record_hits(span: Any, hits: Sequence[Hit]) -> None:
+    """OpenInference documents of one result list (issue #29 Part 5: the first list of the
+    retriever, at most `top_k`), with the small metadata record and never the text."""
+    for i, hit in enumerate(hits):
+        prefix = f"retrieval.documents.{i}.document"
+        span.set_attribute(f"{prefix}.id", hit.chunk_id)
+        span.set_attribute(f"{prefix}.score", float(hit.score))
+        metadata = {k: hit.payload.get(k) for k in METADATA_KEYS if k in hit.payload}
+        span.set_attribute(f"{prefix}.metadata", json.dumps(metadata, ensure_ascii=False))
+
+
 def _record_lists(span: Any, lists: Sequence[ResultList]) -> None:
+    if lists:
+        record_hits(span, lists[0].hits)
     span.set_attribute("rag.n_queries", len(lists))
     span.set_attribute("rag.hits_per_list", json.dumps([len(lst.hits) for lst in lists]))
     span.set_attribute(

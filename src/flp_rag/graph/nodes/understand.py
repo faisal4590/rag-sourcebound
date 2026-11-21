@@ -341,7 +341,7 @@ def classify_query(
         ("rag.prompt_version", version),
         ("rag.rewrite_used", history_used),
         ("rag.attempts", attempts),
-        ("rag.error", error or ""),
+        ("rag.error", error),  # the registry sentinel "none" when the call went through
     ):
         span.set_attribute(key, value)
     return ClassifyOutcome(data, attempts, completions, error)
@@ -483,8 +483,7 @@ def make_understand(
             ("rag.cost_usd", result.cost_usd),
         ):
             span.set_attribute(key, value)
-        if query.chapter_hint is not None:
-            span.set_attribute("rag.chapter_hint", query.chapter_hint)
+        span.set_attribute("rag.chapter_hint", query.chapter_hint)  # -1 without a hint (#29)
         out: dict[str, Any] = {
             "standalone": query,
             "history": history,

@@ -98,7 +98,19 @@ def run(
             outcome = "verify_failed"
     span.set_attribute("rag.duration_s", round(time.perf_counter() - started, 3))
     span.set_attribute("rag.result", outcome)
+    span.set_attribute("rag.cost_usd", run_cost_usd(results, settings))  # Part 4 of issue #29
     return results
+
+
+def run_cost_usd(results: dict[str, Any], settings: Settings) -> float:
+    """The sum of the model costs of the run: the enrichment calls plus the embedding batches
+    (token count times the embedder's input price; 0 for the local model)."""
+    enrich = results.get("enrich")
+    embed = results.get("embed")
+    cost = float(getattr(enrich, "cost_usd", 0.0) or 0.0)
+    if embed is not None:
+        cost += getattr(embed, "tokens_embedded", 0) * settings.embed_price_per_million() / 1e6
+    return cost
 
 
 def verify_passed(results: dict[str, Any]) -> bool:

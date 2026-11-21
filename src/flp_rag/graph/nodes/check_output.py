@@ -446,9 +446,8 @@ def make_check_output(
             attrs["rag.code_verbatim_ok"] = outcome.code.ok
         if outcome.verdict is not None:
             attrs["rag.faithful"] = outcome.verdict.supported
-        for key, value in attrs.items():
-            if value is not None:
-                span.set_attribute(key, value)
+        for key, value in attrs.items():  # a None becomes the registry sentinel (#29)
+            span.set_attribute(key, value)
 
     def check_node(state: RagState) -> dict[str, Any]:
         answer = state.get("answer", "")
@@ -480,6 +479,7 @@ def make_check_output(
             c = outcome.verdict.completion
             out["input_tokens"] = int(state.get("input_tokens", 0)) + c.input_tokens
             out["output_tokens"] = int(state.get("output_tokens", 0)) + c.output_tokens
+            out["faithful"] = outcome.verdict.supported  # Stage 19 stores only a judged answer
         if outcome.result == "ok":
             out |= {"status": "answered", "answer": outcome.answer, "repair_failure": None}
         elif outcome.result == "repair":

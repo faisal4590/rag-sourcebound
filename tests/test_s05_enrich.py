@@ -149,10 +149,11 @@ def test_validate_payload_rejects_missing_or_mistyped_fields() -> None:
         s5.validate_payload({**good, "created_at": "yesterday"})
 
 
-def test_milestone_7_rules_are_not_wired_yet() -> None:
+def test_hypothetical_questions_are_not_wired_yet() -> None:
     settings = load_settings()
-    on = settings.model_copy(update={"enrich": settings.enrich.model_copy(update={"contextual_summary": True})})
-    with pytest.raises(NotImplementedError, match="#37"):
+    enrich = settings.enrich.model_copy(update={"hypothetical_questions": 3})
+    on = settings.model_copy(update={"enrich": enrich})
+    with pytest.raises(NotImplementedError, match="#38"):
         s5.enrich_chunks([_chunk()], on, index_version="v", created_at="2026-09-21T10:00:00Z")
 
 
@@ -163,7 +164,10 @@ def test_milestone_7_rules_are_not_wired_yet() -> None:
 def enriched(tmp_path_factory: pytest.TempPathFactory):
     if not PDF.exists():
         pytest.skip(f"{PDF.relative_to(ROOT)} is absent")
-    settings = load_settings()
+    shipped = load_settings()  # the Milestone 2 fixture: no model, whatever the switch says
+    settings = shipped.model_copy(
+        update={"enrich": shipped.enrich.model_copy(update={"contextual_summary": False})}
+    )
     data = tmp_path_factory.mktemp("data")
     exporter = InMemorySpanExporter()
     tracing.configure_tracing(settings, exporter=exporter, force=True)

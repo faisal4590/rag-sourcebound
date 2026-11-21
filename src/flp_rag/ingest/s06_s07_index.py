@@ -77,6 +77,7 @@ class EmbedResult:
     batches: int
     self_retrieval_failures: int
     output_path: Path
+    tokens_embedded: int = 0  # tokens sent to the embedder (cache misses), for the run cost
 
     def to_attrs(self) -> Attrs:
         return {
@@ -141,14 +142,22 @@ def self_retrieval_failures(vectors: Sequence[Sequence[float]]) -> list[int]:
 
 @stage("embed.batch", kind="EMBEDDING")
 def embed_batch(
-    texts: Sequence[str], tokens: int, embedder: Embedder, *, retry_attempts: int, backoff_s: float
+    texts: Sequence[str],
+    tokens: int,
+    embedder: Embedder,
+    *,
+    retry_attempts: int,
+    backoff_s: float,
+    price_per_million: float = 0.0,
 ) -> list[list[float]]:
     """One batch, one span. Takes scalars, not Settings: the decorator records inputs on the
-    span, and this runs once per batch."""
+    span, and this runs once per batch. `price_per_million` is the embedder's input price in
+    USD; 0 for a local model, so `rag.cost_usd` is 0 and not missing (issue #29 Part 4)."""
     span = current_span()
     span.set_attribute("gen_ai.request.model", embedder.model_name)
     span.set_attribute("rag.batch_size", len(texts))
     span.set_attribute("rag.batch_tokens", tokens)
+    span.set_attribute("rag.cost_usd", tokens * price_per_million / 1e6)
     vectors = with_retries(
         lambda: embedder.embed_passages(texts),
         attempts=retry_attempts,
@@ -162,19 +171,23 @@ def embed_batch(
 
 def embed_dense(
     chunks: Sequence[Chunk], embedder: Embedder, cache: EmbeddingCache, settings: Settings
-) -> tuple[dict[str, list[float]], int, int, int]:
-    """Dense vectors by chunk_id. Returns (vectors, cache hits, cache misses, batches run)."""
+) -> tuple[dict[str, list[float]], int, int, int, int]:
+    """Dense vectors by chunk_id. Returns (vectors, cache hits, cache misses, batches run,
+    tokens embedded)."""
     texts = [c.embedding_text for c in chunks]
     cached = cache.get_many(embedder.model_name, texts)
     vectors: dict[str, list[float]] = {c.chunk_id: cached[c.embedding_text] for c in chunks if c.embedding_text in cached}
     missing = [c for c in chunks if c.embedding_text not in cached]
     batches = 0
+    tokens_embedded = 0
     size = settings.embed.batch_size
     for start in range(0, len(missing), size):
         batch = missing[start : start + size]
+        tokens_embedded += sum(c.token_count for c in batch)
         fresh = embed_batch(
             [c.embedding_text for c in batch], sum(c.token_count for c in batch), embedder,
             retry_attempts=settings.embed.retry_attempts, backoff_s=settings.embed.retry_backoff_s,
+            price_per_million=settings.embed_price_per_million(),
         )
         cache.put_many(embedder.model_name, [(c.embedding_text, v) for c, v in zip(batch, fresh, strict=True)])
         for c, v in zip(batch, fresh, strict=True):
@@ -183,7 +196,7 @@ def embed_dense(
     if len(vectors) != len(chunks):
         raise RuntimeError(f"{len(chunks) - len(vectors)} chunks have no dense vector; refusing a partial index")
     # Hits count chunks served from the cache, so hits + misses == chunks even with repeated text.
-    return vectors, len(chunks) - len(missing), len(missing), batches
+    return vectors, len(chunks) - len(missing), len(missing), batches, tokens_embedded
 
 
 # --------------------------------------------------------------------------- parquet
@@ -243,7 +256,9 @@ def embed(
     cache_file = cache_path or (settings.config_path.parent / settings.embed.cache_path)
 
     with EmbeddingCache(cache_file) as cache:
-        dense, hits, misses, batches = embed_dense(chunks, embedder, cache, settings)
+        dense, hits, misses, batches, tokens_embedded = embed_dense(
+            chunks, embedder, cache, settings
+        )
 
     sparse_vectors = sparse.embed([sparse_text(c) for c in chunks])
     if len(sparse_vectors) != len(chunks):
@@ -271,6 +286,7 @@ def embed(
         batches=batches,
         self_retrieval_failures=len(failures),
         output_path=output_path,
+        tokens_embedded=tokens_embedded,
     )
 
 
@@ -421,6 +437,11 @@ def build_manifest(
             "chunks_with_code": sum(1 for c in chunks if c.payload.get("has_code")),
         },
         "composition": composition,
+        "enrich": {  # issue #37: from the payload, like chunk_config_hash
+            "contextual_summary": any(c.payload.get("context_summary") for c in chunks),
+            "prompt_version": chunks[0].payload.get("enrich_prompt_version") if chunks else None,
+            "chunks_with_summary": sum(1 for c in chunks if c.payload.get("context_summary")),
+        },
         "cost_usd": 0.0,
     }
 

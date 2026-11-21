@@ -17,8 +17,11 @@ Milestone 2 rules:
 `index_version` is decided here, once per run, as `v{n}-{embed_model_short}-{chunk_config_hash[:8]}`
 with `n` one above the highest run in `data/index/`. Stage 7 reads it from the payload.
 
-Milestone 7 rules (contextual summary, hypothetical questions) are switched off in config and
-raise when switched on until issues #37 and #38 land.
+Milestone 7 rule 5 (contextual summaries, issue #37) lives in `s05_summary.py`: with
+`enrich.contextual_summary` on, `enrich()` builds the summary model (`enrich.summary_model`),
+opens the summary cache, and prepends one summary per chunk to `embedding_text`; the calls,
+tokens, cost, failures, cache hits, and the prompt version land on the `ingest.enrich` span.
+Rule 6 (hypothetical questions) raises when switched on until issue #38 lands.
 """
 
 import re
@@ -31,7 +34,10 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
 from flp_rag.contracts import Attrs, Chunk, read_jsonl, write_jsonl
-from flp_rag.settings import Settings
+from flp_rag.ingest.s05_summary import Summarizer, Tally, load_summary_prompt
+from flp_rag.models import ChatModel, get_chat_model
+from flp_rag.settings import PROJECT_ROOT, Settings
+from flp_rag.stores.summary_cache import SummaryCache
 from flp_rag.tracing import stage
 
 KEYWORDS = ("readonly", "enum", "match", "never", "fn", "static")
@@ -178,9 +184,11 @@ class EnrichResult:
     cost_usd: float
     failures: int
     output_path: Path
+    cache_hits: int = 0
+    prompt_version: str | None = None  # the enrichment prompt, with contextual summaries on
 
     def to_attrs(self) -> Attrs:
-        return {
+        attrs: Attrs = {
             "rag.doc_id": self.doc_id,
             "rag.chunks_enriched": self.chunks_enriched,
             "rag.index_version": self.index_version,
@@ -189,7 +197,11 @@ class EnrichResult:
             "gen_ai.usage.output_tokens": self.output_tokens,
             "rag.cost_usd": self.cost_usd,
             "rag.failures": self.failures,
+            "rag.cache_hits": self.cache_hits,
         }
+        if self.prompt_version is not None:
+            attrs["rag.prompt_version"] = self.prompt_version
+        return attrs
 
 
 def enrich_chunk(chunk: Chunk, settings: Settings, *, index_version: str, created_at: str) -> Chunk:
@@ -212,12 +224,42 @@ def enrich_chunk(chunk: Chunk, settings: Settings, *, index_version: str, create
 def enrich_chunks(
     chunks: Sequence[Chunk], settings: Settings, *, index_version: str, created_at: str
 ) -> list[Chunk]:
-    cfg = settings.enrich
-    if cfg.contextual_summary:
-        raise NotImplementedError("enrich.contextual_summary is Milestone 7, issue #37")
-    if cfg.hypothetical_questions:
+    """The Milestone 2 enrichment of every chunk (payload and symbols), no model."""
+    if settings.enrich.hypothetical_questions:
         raise NotImplementedError("enrich.hypothetical_questions is Milestone 7, issue #38")
     return [enrich_chunk(c, settings, index_version=index_version, created_at=created_at) for c in chunks]
+
+
+def enrich_all(
+    chunks: Sequence[Chunk],
+    settings: Settings,
+    *,
+    index_version: str,
+    created_at: str,
+    summarizer: Summarizer | None,
+) -> tuple[list[Chunk], Tally]:
+    """Every chunk enriched and, with a summarizer, summarized (issue #37). More than
+    `enrich.summary_max_failures` chunks without a summary fail the run: a half-summarized
+    index is a mixed embedding space, like a partial index."""
+    enriched = enrich_chunks(chunks, settings, index_version=index_version, created_at=created_at)
+    if summarizer is None:
+        return enriched, Tally()
+    out: list[Chunk] = []
+    tally = Tally()
+    for chunk in enriched:
+        summarized, one = summarizer.apply(chunk)
+        out.append(summarized)
+        tally += one
+        if tally.failures > settings.enrich.summary_max_failures:
+            # Stop at the first chunk over the bound: the rest would cost calls and quota for
+            # a run that fails anyway, and the cached summaries make the rerun cheap.
+            raise RuntimeError(
+                f"{tally.failures} chunk(s) have no summary after "
+                f"{settings.enrich.summary_retry_attempts} attempts each "
+                f"(enrich.summary_max_failures is {settings.enrich.summary_max_failures}); "
+                f"stopped at chunk {len(out)} of {len(enriched)}"
+            )
+    return out, tally
 
 
 def utc_now_iso() -> str:
@@ -232,23 +274,45 @@ def enrich(
     in_dir: Path = Path("data/chunks"),
     out_dir: Path = Path("data/enriched"),
     index_dir: Path = Path("data/index"),
+    chat: ChatModel | None = None,
 ) -> EnrichResult:
-    """Run Stage 5 on the Stage 4 output of one document."""
+    """Run Stage 5 on the Stage 4 output of one document. `chat` replaces the configured
+    summary model (tests); it is built on first use only when `enrich.contextual_summary` is on."""
     chunks = list(read_jsonl(in_dir / f"{doc_id}.jsonl", Chunk))
     index_version = next_index_version(index_dir, settings.embed.model, settings.chunk_config_hash)
-    enriched = enrich_chunks(chunks, settings, index_version=index_version, created_at=utc_now_iso())
+    cfg = settings.enrich
+    prompt_version: str | None = None
+    if cfg.contextual_summary:
+        # The prompt is read from the project root, the same root the chunk config hash uses.
+        prompt = load_summary_prompt(PROJECT_ROOT / cfg.summary_prompt_file)
+        prompt_version = prompt.version
+        model = chat if chat is not None else get_chat_model(settings, "enrich")
+        with SummaryCache(settings.config_path.parent / cfg.summary_cache_path) as cache:
+            enriched, tally = enrich_all(
+                chunks,
+                settings,
+                index_version=index_version,
+                created_at=utc_now_iso(),
+                summarizer=Summarizer(model, prompt, cfg, cache),
+            )
+    else:
+        enriched, tally = enrich_all(
+            chunks, settings, index_version=index_version, created_at=utc_now_iso(), summarizer=None
+        )
     output_path = out_dir / f"{doc_id}.jsonl"
     write_jsonl(output_path, enriched)
     return EnrichResult(
         doc_id=doc_id,
         chunks_enriched=len(enriched),
         index_version=index_version,
-        llm_calls=0,
-        input_tokens=0,
-        output_tokens=0,
-        cost_usd=0.0,
-        failures=0,
+        llm_calls=tally.calls,
+        input_tokens=tally.input_tokens,
+        output_tokens=tally.output_tokens,
+        cost_usd=tally.cost_usd,
+        failures=tally.failures,
         output_path=output_path,
+        cache_hits=tally.cache_hits,
+        prompt_version=prompt_version,
     )
 
 

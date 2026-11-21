@@ -7,8 +7,9 @@ section or key fails at load time with the offending name.
 
 Hashes stamped on the model:
 - `config_hash = sha256(file bytes)[:8]` goes on every trace (`rag.config_hash`).
-- `chunk_config_hash = sha256(canonical json of the parse, structure, clean, and chunk sections
-  plus the source of ingest/s01_parse.py .. s05_enrich.py)[:16]` names an index version
+- `chunk_config_hash = sha256(canonical json of the parse, structure, clean, chunk, and enrich
+  sections, the enrichment prompt file, plus the source of ingest/s01_parse.py ..
+  s05_summary.py)[:16]` names an index version
   and lets Stage 1 skip a PDF that is already indexed with the same chunking.
 """
 
@@ -16,14 +17,15 @@ import hashlib
 import json
 import re
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 ABSTAIN_TEXT = "No information found"
 
-DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config.yaml"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config.yaml"
 _SECRET_KEY = re.compile(r"(^|_)(api_?key|key|secret|token|password|credentials?)(_|$)")
 
 
@@ -100,7 +102,35 @@ class ChunkConfig(_Section):
 class EnrichConfig(_Section):
     symbols_max: int = Field(ge=0)
     contextual_summary: bool = False
+    summary_model: str = "groq:openai/gpt-oss-20b"
+    summary_prompt_file: Path = Path("prompts/enrich_v1.md")
+    summary_temperature: float = Field(default=0, ge=0, le=2)
+    summary_max_output_tokens: int = Field(default=600, gt=0)
+    summary_reasoning_effort: str | None = None
+    summary_max_words: int = Field(default=80, gt=0)
+    summary_retry_attempts: int = Field(default=3, ge=1)
+    summary_retry_backoff_s: float = Field(default=2.0, ge=0)
+    summary_retry_after_max_s: float = Field(default=60.0, ge=0)
+    summary_pause_s: float = Field(default=0.0, ge=0)
+    summary_max_failures: int = Field(default=0, ge=0)
+    summary_cache_path: Path = Path("data/cache/summaries.sqlite")
     hypothetical_questions: int = Field(default=0, ge=0)
+
+    # The keys that shape `embedding_text` (issue #37). Pauses, retries, and the cache path do
+    # not change a summary, so they stay out of the chunk config hash.
+    TEXT_SHAPING_KEYS: ClassVar[tuple[str, ...]] = (
+        "contextual_summary",
+        "summary_model",
+        "summary_temperature",
+        "summary_max_output_tokens",
+        "summary_reasoning_effort",
+        "summary_max_words",
+        "hypothetical_questions",
+    )
+
+    def text_shaping(self) -> dict[str, Any]:
+        dumped = self.model_dump(mode="json")
+        return {key: dumped[key] for key in self.TEXT_SHAPING_KEYS}
 
 
 class EmbedConfig(_Section):
@@ -257,12 +287,32 @@ class OutputConfig(_Section):
 
 class FeedbackConfig(_Section):
     enabled: bool = True
+    timeout_s: float = Field(default=3.0, gt=0)  # the whole Phoenix write of POST /feedback (#31)
+    missing_retry_s: float = Field(default=1.0, ge=0)  # wait once when Phoenix lacks the trace
+    max_comment_chars: int = Field(default=2000, gt=0)
+
+
+class AlertsConfig(_Section):
+    """The five alert rules of spec 7.10 (issue #32), evaluated by `eval/dashboard.py --alerts`
+    and mirrored in `docs/dashboards/alerts.yaml`."""
+
+    abstain_rate_max: float = Field(ge=0, le=1)
+    abstain_min_requests: int = Field(ge=0)
+    abstain_window_hours: float = Field(gt=0)
+    p95_latency_max_s: float = Field(gt=0)
+    p95_window_minutes: float = Field(gt=0)
+    errors_max: int = Field(ge=0)
+    errors_window_minutes: float = Field(gt=0)
+    faithfulness_fail_rate_max: float = Field(ge=0, le=1)
+    faithfulness_window_hours: float = Field(gt=0)
+    cost_max_usd_per_day: float = Field(gt=0)
 
 
 class CacheConfig(_Section):
     semantic_enabled: bool = False
     similarity_threshold: float = Field(ge=0, le=1)
     ttl_hours: int = Field(ge=0)
+    store_path: str  # the answer cache file (issue #40), relative to config.yaml
 
 
 class TraceConfig(_Section):
@@ -271,6 +321,10 @@ class TraceConfig(_Section):
     retention_days: int = Field(default=30, ge=0)
     content_max_chars: int = Field(default=20_000, gt=0)
     attr_string_max_chars: int = Field(default=1_000, gt=0)
+    attr_json_max_chars: int = Field(default=4_000, gt=0)  # a list or record attribute (#29)
+    max_span_attributes: int = Field(default=1_024, gt=128)  # OTel drops the oldest past this
+    metrics_endpoint: str = ""  # OTLP/HTTP metrics endpoint (issue #30); empty = no export
+    metrics_export_interval_s: float = Field(default=15, gt=0)
     export_timeout_s: float = Field(default=10, gt=0)
     instrument_langchain: bool = False
 
@@ -364,6 +418,7 @@ class Settings(_Section):
     gen: GenConfig
     output: OutputConfig
     feedback: FeedbackConfig
+    alerts: AlertsConfig
     cache: CacheConfig
     trace: TraceConfig
     eval: EvalConfig
@@ -399,10 +454,10 @@ class Settings(_Section):
     def _cross_field_rules(self) -> "Settings":
         if self.abstain_text != ABSTAIN_TEXT:
             raise ValueError(f"abstain_text must be exactly {ABSTAIN_TEXT!r}")
-        unpriced = sorted(
-            {self.gen.model, self.query.model, self.output.judge_model}
-            - set(self.prices_usd_per_million_tokens)
-        )
+        priced_models = {self.gen.model, self.query.model, self.output.judge_model}
+        if self.embed.model.startswith("text-embedding"):  # a hosted embedder is a paid call
+            priced_models.add(self.embed.model)
+        unpriced = sorted(priced_models - set(self.prices_usd_per_million_tokens))
         if unpriced:
             raise ValueError(
                 f"no price for configured model(s) {unpriced}; "
@@ -418,6 +473,11 @@ class Settings(_Section):
 
     def price_for(self, model: str) -> Price:
         return self.prices_usd_per_million_tokens[model]
+
+    def embed_price_per_million(self) -> float:
+        """USD per million input tokens of the embedder: 0 for a local model (issue #29)."""
+        price = self.prices_usd_per_million_tokens.get(self.embed.model)
+        return price.input if price is not None else 0.0
 
 
 # --------------------------------------------------------------------------- loading
@@ -440,6 +500,7 @@ INGEST_SOURCE_FILES = (
     "s01_parse.py",
     "s02_structure.py",
     "s03_clean.py",
+    "s05_summary.py",
     "s04_chunk.py",
     "s05_enrich.py",
 )
@@ -450,20 +511,32 @@ def chunk_config_hash(
     structure: StructureConfig,
     clean: CleanConfig,
     chunk: ChunkConfig,
+    enrich: EnrichConfig | None = None,
     *,
     source_dir: Path = INGEST_DIR,
+    prompt_root: Path | None = None,
 ) -> str:
-    """Stable hash of everything that shapes a chunk set: the validated parse, structure, clean,
-    and chunk sections (defaults applied, keys sorted) plus the source text of Stages 1-5. A
-    rule change in the chunker changes the hash, so Stage 1 does not report "already indexed"
-    against an index built by the old rules. The git SHA stays a separate manifest field."""
+    """Stable hash of everything that shapes a chunk set and its embedding text: the validated
+    parse, structure, clean, chunk, and enrich sections (defaults applied, keys sorted), the
+    enrichment prompt file (issue #37: the summary is part of `embedding_text`), plus the source
+    text of Stages 1-5. A rule change in the chunker or the summary switch changes the hash, so
+    Stage 1 does not report "already indexed" against an index built by the old rules. The git
+    SHA stays a separate manifest field."""
     sections = {
         "parse": parse.model_dump(mode="json"),
         "structure": structure.model_dump(mode="json"),
         "clean": clean.model_dump(mode="json"),
         "chunk": chunk.model_dump(mode="json"),
     }
+    if enrich is not None:
+        sections["enrich"] = enrich.text_shaping()
     digest = hashlib.sha256(json.dumps(sections, sort_keys=True, separators=(",", ":")).encode())
+    if enrich is not None and enrich.contextual_summary:
+        # The prompt shapes every summary, so it is part of the hash while the switch is on. It
+        # is a repository asset like the stage sources: read from the project root, not from
+        # the directory of a config copy (tests write copies next to no prompts).
+        root = prompt_root if prompt_root is not None else PROJECT_ROOT
+        digest.update((root / enrich.summary_prompt_file).read_bytes())
     for name in INGEST_SOURCE_FILES:
         digest.update(name.encode())
         digest.update((source_dir / name).read_bytes())
@@ -492,6 +565,7 @@ def load_settings(path: Path | str = DEFAULT_CONFIG_PATH) -> Settings:
         _section(data, "structure", StructureConfig, config_path),
         _section(data, "clean", CleanConfig, config_path),
         _section(data, "chunk", ChunkConfig, config_path),
+        _section(data, "enrich", EnrichConfig, config_path),
     )
     return Settings(
         **data,

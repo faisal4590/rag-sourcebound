@@ -18,7 +18,10 @@ Purpose, Input and output, Rules, Configuration, Trace span, Done when.
 `compile_default`; every node runs under its spec span, routing after `understand` and `gate`),
 Stage 12 hybrid retrieval in `graph/nodes/retrieve.py`, `flp retrieve` (dense listing only), and the
 Stage 9 FastAPI app in `api/app.py` (`create_app`, `POST /ask` with SSE, `POST /feedback` stub,
-`GET /health`; `make serve` runs it on :8000). Every response carries `trace_id` and the
+`GET /health`, and `GET /` = the chat page `api/static/index.html` of issue #85, one static file
+that posts to `/ask` with a per-conversation `session_id`, renders the answer with `[Sn]`
+badges and the sources table, shows status, latency, trace id, cache hit, and a debug panel;
+`/?q=...` asks on load; `make serve` runs it on :8000). Every response carries `trace_id` and the
 `X-Trace-Id` header; a middleware opens `rag.request` per request, unhandled errors answer 500
 (501 for a `NotImplementedError` placeholder) inside that span, timeouts answer 504. Stage 10 input guardrails in `graph/nodes/guard_input.py` (length check raises `InputRejected`,
 which the API answers as HTTP 400 `question must be 1-2000 characters`; injection regexes and the
@@ -262,7 +265,141 @@ ones not yet carrying a `faithfulness_online` annotation, a seeded 20% sample
 and the answer read from `input.value` / `output.value`, and the verdict as the annotation
 `faithfulness_online` on the root span (identifier `faithfulness_online:<trace_id>`, so a rerun
 upserts). Rules 2-4 of 8.7 (weekly thumbs-down review, add failures to the golden set, bump
-`golden_version`) are manual steps in the same note. Next: Milestone 5 (full observability).
+`golden_version`) are manual steps in the same note. Stage 19 (issue #40, Milestone 7 item 4, started out of order like Milestone 6): the semantic
+answer cache is `stores/answer_cache.py` (`AnswerCache`, one SQLite file at `cache.store_path`,
+one row per answered question: vector, answer, sources, `index_version`, `prompt_version`,
+`embed_model`, TTL `cache.ttl_hours`) and `graph/cache.py` (the `cache_lookup` node, span
+`cache.lookup`, wired between `guard_input` and `understand` only when `cache.semantic_enabled`
+is true and `Deps.answers` is open; `GraphNodes.cache_lookup` defaults to None and `NODE_ORDER`
+stays the nine stages). The node embeds the raw question through the query embedding cache
+(rule 1), asks the store for the closest row of the configured answer prompt version and the
+index version with cosine >= `cache.similarity_threshold`, and on a hit writes `cache_hit`,
+`cache_similarity`, the answer and the sources to the state, so `route_after_cache` goes to
+`respond` and Stages 11-17 never run; `build_response` keeps the cached sources. Stage 18 calls
+`store_answer`: a row is written only for an answered response whose Stage 17 judge ran and
+said supported (`state.faithful`, new key set by check_output), never for a hit. Four
+requests stay out of the cache both ways (`cache_skipped` names the reason, nothing is
+embedded): `judge_all` (the harness measures the pipeline, not the cache), `filters` (a
+chapter-restricted answer is not the unrestricted one), `no_index` (no alias), `history` (the
+raw follow-up question is not the question that was answered). Rows also carry
+`config_hash`, so a model, gate, reranker, or context change empties the cache like a new
+index or prompt. A store error (`sqlite3.Error`, a bad row) is recorded on the span and
+logged, and the request goes on as a miss or an unstored answer, like the session turn. The
+API opens the store when the switch is on, runs rule 5 at startup (`purge_other_versions`
+with the index version behind the alias, the configured prompt version, and the config hash,
+plus `purge_expired`; skipped when no alias answers), copies `cache.hit` and
+`cache.similarity` onto `rag.request`, and closes the store at shutdown. Live 2026-11-21 with
+the switch on: a judged answer stored, the same text again 23 ms with `cache.hit = true` on
+the root span, a lower-case variant 140 ms at cosine 0.982; an unjudged answer (the sample
+rate) is not stored, so with `output.faithfulness_sample_rate` under 1 only the judged share
+of answers ever caches. The switch is off in `config.yaml` (the spec default).
+Milestone 5 started with #29 (the span registry): `src/flp_rag/span_registry.yaml` is the one
+list of every request span and ingestion span (kind, parent, the Part 7 paths, required,
+conditional and content attributes, OpenInference document prefixes, source), plus the
+attribute catalog (type and sentinel per attribute), the limits (text 1,000, JSON 4,000, marker
+`…(truncated)`), and the content keys of the switch. `span_registry.py` loads it
+(`load_registry`, `Registry.expected_spans(path)`), checks spans (`check_span`, `check_trace`,
+`cost_mismatch`, `attribute_violations`), reads both span shapes (`from_readable` for the
+in-memory exporter, `from_phoenix` for the REST rows), and classifies a live trace
+(`classify_path`). `tracing.current_span()` returns `RuledSpan`, a proxy whose `set_attribute`
+applies the rules to every caller: a None becomes the registry sentinel (-1 or `none`) or is
+dropped when the catalog knows none, a list or record becomes JSON cut at
+`trace.attr_json_max_chars`, a text is cut at `trace.attr_string_max_chars` and ends with the
+marker, and a content key (`input.value`, `output.value`, the question text, `rag.variants`,
+`rag.rejected_answer`, `*.document.content`) is dropped when `trace.capture_content` is false;
+the LangChain instrumentor gets a `TraceConfig` that hides inputs and outputs under the same
+switch. `trace.max_span_attributes` (1,024) lifts OTel's default of 128, which dropped the
+oldest attributes (the span kind first) on a span with 30 documents. Fixed on the way: the
+retrieve node opened `retrieval.hybrid` twice (the node wrapper and the `@stage` function; the
+function is now marked `self_traced`), `rag.abstain_reason` is on the gate and the output check
+on every request (`none` on pass), `rag.chapter_hint` is -1 without a hint, `rag.error` on
+`query.classify` is `none`, the rerank span carries `reranker.input_documents.*` and
+`reranker.output_documents.*` (id, score, metadata; content under the switch), the dense and
+sparse spans carry the documents of their first list, `embed.batch` carries `rag.cost_usd` (0
+for the local model, token count times the input price otherwise; `embed.model` needs a price
+row when its name starts with `text-embedding`) and `ingest.run` the run sum, the API root span
+sets every required key at span start with its sentinel and keeps `rag.cost_usd` on early
+exits. `tests/test_span_tree.py` runs eight request paths through the API with fake models and
+the ingestion run (Stages 2-8 real, Stage 1 a fake under the same span) and compares each
+trace with the registry; `eval/trace_coverage.py --tag <run_tag>` (`make trace-coverage
+TAG=...`) does the same for the traces of a smoke run in Phoenix, one line per request; a trace
+with no registry path (a timeout) is SKIP, printed and counted, out of the denominator.
+Measured 2026-11-21 on the 10 smoke queries: 10/10 checked traces pass, one timeout skipped.
+The rerank span sets every registry key on the no-candidate and rerank-disabled branches too.
+Issue #30 (spec 7.7 and 7.8): `metrics.py` installs a `MeterProvider` next to the tracer
+provider (`trace.metrics_endpoint`, OTLP/HTTP, empty = recorded but not exported; tests pass
+an `InMemoryMetricReader` through `configure_tracing(metric_reader=)`) and
+`SpanMetricsProcessor`, a span processor that derives every metric of spec 7.7 from finished
+spans, so nothing is counted twice: `rag.requests` (status, abstain_reason, cache.hit) from the
+root span, `rag.stage.latency_ms` from every span, `rag.tokens` and `rag.cost_usd` from `LLM`
+spans and `embed.batch`, `rag.rerank_score_top1`, `rag.retrieval.overlap_ratio`, `rag.errors`
+(span.name, exception.type) from ERROR spans; `rag.user_feedback` is recorded by `POST
+/feedback`. Logging (7.8): every line carries `trace_id`, `span_id`, `request_id`, and
+`index_version` (the last two from `tracing.request_context`, which the API middleware opens
+per request); the structlog filter sits at DEBUG and `drop_debug_unless_requested` drops DEBUG
+lines unless the request set `debug: true` (`tracing.set_debug` in the `/ask` handler), so a
+debug request writes one `stage` DEBUG line per node (`build._traced`) and a plain one writes
+none; `tracing.log_error_once` writes one ERROR line per failure (span, exception type,
+message, never the stack trace) from the `@stage` decorator and marks the exception, so the
+parents and the API handler stay quiet. Live 2026-11-21: a debug request wrote nine stage
+DEBUG lines and the INFO line, a plain one the INFO line only, all with the response's trace
+id. Issue #31 (Stage 18 rules 4-5): `api/feedback.py` turns a `POST /feedback` rating into the
+span annotation `user_feedback` on the root span of the named trace (score 1 for `up`, -1 for
+`down`, the rating as label, the comment as explanation, annotator kind HUMAN, identifier
+`user_feedback:<trace_id>` so a rerating replaces the first; root span by the same GraphQL
+lookup the harness uses, the write synchronous with `feedback.timeout_s` so the score is in
+Phoenix when the endpoint answers); `write_feedback` returns `written`, `missing_trace`, or the
+error class and never raises, the endpoint runs it in a threadpool, sets
+`rag.feedback_rating` and `rag.feedback_written` on its root span, counts `rag.user_feedback`,
+and answers `{ok, trace_id, recorded}`; `feedback.enabled: false` keeps the endpoint and drops
+the write (`recorded: false`). `flp ask` asks once after a non-error, non-`--json` answer
+(`Helpful? [u]p / [d]own / Enter to skip:`, one raw keypress through `cli.read_key`, only when
+stdin and stdout are terminals and the switch is on), posts the rating with the response's
+trace id, prints `feedback sent: <rating>` or one `feedback not sent` note, and never changes
+the exit code; `--stream` has no prompt (the stream carries no record). Issue #32 closes
+Milestone 5: Phoenix 20.9 has no dashboard builder and no alerting, so `eval/dashboard.py`
+(`make dashboard HOURS=24`, `--json`) computes the five panels of spec 7.9 from the spans of a
+window read over the Phoenix REST API (`eval/phoenix_api.py` holds the shared paged reads:
+spans of a window, spans of a trace, span annotations in batches) and evaluates the five
+rules of 7.10 on the same spans with the thresholds of the `alerts:` block of `config.yaml`
+(`make alerts`, exit 1 when a rule fires, 2 when Phoenix is unreachable; a rule without data
+is `NO DATA`; the fetch always covers the longest rule window); `rag.requests` carries an
+`http.route` label so the Grafana rates read `/ask` only; the Grafana
+version of the same panels and rules for a deployment that exports the OTel metrics is
+`docs/dashboards/grafana-flp-rag.json` and `docs/dashboards/alerts.yaml` (collector with
+`add_metric_suffixes: false`, README there states the Phoenix gap and the two PromQL
+approximations). `eval/trace_show.py <trace_id>` (`make trace TRACE=...`) prints the debug
+runbook of 7.11 step by step from the spans of one trace, with the documents, the rerank
+scores, the gate decision against its thresholds, and the absence of the later spans as the
+signal. The runbook walkthrough on a wrong answer caused with `gate.tau_pass = 0.99` is
+`docs/notes/m5-runbook-walkthrough.md`. Milestone 5 is complete. Milestone 7 item 1 (#37,
+contextual summaries) is built and switched off: `ingest/s05_summary.py` (`Summarizer`,
+`load_summary_prompt`, `summary_key`, `check_summary`, `with_summary`, `Tally`) writes one
+small-model summary per chunk (`enrich.summary_model`, prompt `prompts/enrich_v1.md` split at
+`Chunk:`, `prompt_version` = sha256[:8]) and prepends it to `embedding_text` (`display_text`
+never changes; payload `context_summary` and `enrich_prompt_version`; manifest `enrich`
+block); `stores/summary_cache.py` caches by `sha256(prompt_version + chunk_id +
+display_text)` and treats another model's row as a miss; transport errors and invalid outputs
+(empty, over `enrich.summary_max_words`) are retried `enrich.summary_retry_attempts` times
+with a doubling backoff and the `Retry-After` header (a header over
+`enrich.summary_retry_after_max_s` and an output cut by `summary_max_output_tokens` are not
+retried); a chunk still without a summary is kept and counted, and `enrich_all` stops at the
+first chunk over `enrich.summary_max_failures`; `enrich.summary_pause_s` paces the free tier;
+`get_chat_model(settings, "enrich")` is the new role. `ingest.enrich` carries `rag.llm_calls`,
+`gen_ai.usage.*`, `rag.cost_usd`, `rag.failures`, `rag.cache_hits`, and `rag.prompt_version`.
+The chunk config hash now covers the `enrich` keys that shape a summary (switch, model,
+temperature, output budget, reasoning effort, word cap), the prompt file while the switch is
+on, and `s05_summary.py`: `f32bf8f588b0d7b7` off, `716fbd6466f794ea` on (the 202 chunks are
+unchanged; the next `make ingest` with the switch off builds a new version of the same chunks
+from the embedding cache). Measured 2026-11-22 (`docs/notes/m7-contextual-summaries.md`):
+the summary moves the fused list (MRR@10 0.900 -> 0.938, 6 cases up, 2 down, p 0.29) and
+leaves the reranked list identical on all 60 answerable cases (MRR@10 0.936, Recall@5 1.000),
+so the switch stays off and the alias on `v3-bgem3-d4ebab9e`; the index with summaries is
+`v4-bgem3-716fbd64` (kept, not behind the alias). The `make eval` run of that day is recorded
+as invalid: the summaries build spent most of the 200,000 tokens per day of the free-tier 20b
+model, which is also the query model and both judges, so the harness hit the daily quota
+(21% errors). A summaries build and a harness run need separate days on the free tier. Next:
+#38, #39, #41 or the open PR #83.
 **Trap fixed, not in the spec:** JetBrains Mono ligatures read as `=` in the PDF text layer.
 Stage 1 repairs them by glyph id through `parse.glyph_tables` (generated by
 `tools/build_glyph_table.py` from JetBrains Mono v2.221). 1,607 glyphs recovered on the shipped
@@ -343,7 +480,7 @@ so one stage can be rerun without the PDF.
 `rerank` (13, bge-reranker-base, top 8) -> `gate` (14, conditional edge: `pass` or `abstain`) ->
 `assemble` (15, parents, `[S1]` labels, 6000-token budget, book order) -> `generate` (16) ->
 `check_output` (17, citations, faithfulness judge, code verbatim) -> `respond` (18).
-`graph/cache.py` is Stage 19 (Milestone 7). `graph/state.py` holds `RagState`.
+`graph/cache.py` is Stage 19, the semantic answer cache (issue #40). `graph/state.py` holds `RagState`.
 
 **Shared:** `contracts.py` (dataclasses from spec Section 10, each with `to_attrs()`),
 `settings.py` (loads `config.yaml`, computes `config_hash`), `models.py` (the only file that names a

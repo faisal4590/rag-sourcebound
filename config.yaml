@@ -48,7 +48,19 @@ chunk:
 
 enrich:
   symbols_max: 40
-  contextual_summary: false      # Milestone 7
+  contextual_summary: false      # Milestone 7, issue #37: one small-model summary per chunk, prepended to embedding_text
+  summary_model: groq:openai/gpt-oss-20b   # Groq free tier; needs a price row like the other models
+  summary_prompt_file: prompts/enrich_v1.md
+  summary_temperature: 0
+  summary_max_output_tokens: 600 # a reasoning model's thinking counts toward it
+  summary_reasoning_effort: low  # OpenAI protocol reasoning models only
+  summary_max_words: 80          # a longer or empty output is invalid: retried, then a failure
+  summary_retry_attempts: 3      # transport errors and invalid outputs
+  summary_retry_backoff_s: 2.0   # doubles per attempt; a 429 Retry-After header wins when larger
+  summary_retry_after_max_s: 60  # a Retry-After beyond this (a daily quota) is a failure, not a wait
+  summary_pause_s: 2.0           # between model calls (not cache hits); the Groq free tier allows 30 per minute
+  summary_max_failures: 0        # chunks left without a summary before the run fails
+  summary_cache_path: data/cache/summaries.sqlite   # sha256(prompt_version + chunk_id + display_text) -> summary
   hypothetical_questions: 0      # Milestone 7
 
 embed:
@@ -164,20 +176,40 @@ output:
 
 feedback:
   enabled: true                  # Stage 18: CLI keypress and POST /feedback
+  timeout_s: 3                   # the whole write of the user_feedback score to Phoenix (issue #31)
+  missing_retry_s: 1             # Phoenix exports in batches: wait once when the trace is not there yet
+  max_comment_chars: 2000        # a longer comment is cut before it reaches the trace
+
+alerts:                          # spec 7.10 (issue #32): eval/dashboard.py --alerts, docs/dashboards/alerts.yaml
+  abstain_rate_max: 0.40         # abstain share over the window ...
+  abstain_min_requests: 20       # ... counts only with more requests than this
+  abstain_window_hours: 1
+  p95_latency_max_s: 8           # p95 of rag.request over the window
+  p95_window_minutes: 10
+  errors_max: 5                  # spans with status ERROR over the window
+  errors_window_minutes: 10
+  faithfulness_fail_rate_max: 0.10   # unsupported / judged over the window
+  faithfulness_window_hours: 1
+  cost_max_usd_per_day: 2        # sum of rag.cost_usd over the last 24 h
 
 cache:
-  semantic_enabled: false        # Milestone 7
+  semantic_enabled: false        # Milestone 7 (issue #40): true turns the answer cache on
   similarity_threshold: 0.97
   ttl_hours: 168
+  store_path: data/cache/answers.sqlite   # Stage 18 writes, the Stage 19 lookup reads
 
 trace:
   exporter_endpoint: http://localhost:6006/v1/traces
   capture_content: true
   retention_days: 30
   content_max_chars: 20000       # input.value / output.value cap per span
-  attr_string_max_chars: 1000    # string attribute cap, spec 7.6
+  attr_string_max_chars: 1000    # string attribute cap, spec 7.6; longer values end with "…(truncated)"
+  attr_json_max_chars: 4000      # list and record attributes (JSON strings), issue #29 Part 2
+  max_span_attributes: 1024      # OTel's default of 128 drops the oldest; 30 documents need ~150
   export_timeout_s: 10           # OTLP export timeout; bounds shutdown when Phoenix is down
   instrument_langchain: false    # extra LangChain/LangGraph spans from OpenInference; our @stage spans are the contract
+  metrics_endpoint: ""           # OTLP/HTTP metrics (spec 7.7, issue #30), e.g. http://localhost:4318/v1/metrics; "" = none
+  metrics_export_interval_s: 15
 
 eval:                            # Milestone 6 harness (issue #34), spec Sections 8.2-8.6
   golden_file: eval/golden_v1.jsonl

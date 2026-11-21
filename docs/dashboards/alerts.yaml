@@ -1,0 +1,249 @@
+# The five alert rules of spec 7.10 as Grafana unified-alerting provisioning (issue #32).
+# Thresholds mirror the `alerts:` block of config.yaml; `eval/dashboard.py --alerts` evaluates
+# the same rules on the Phoenix spans for a deployment without Grafana. Every query is an
+# instant query over its own window, reduced to one number before the threshold or math node;
+# `${DS_PROMETHEUS}` is the Prometheus datasource uid, set in the provisioning environment.
+# A rule without data is OK (an idle system does not page); a failing query is an error.
+apiVersion: 1
+groups:
+- orgId: 1
+  name: flp-rag
+  folder: flp-rag
+  interval: 1m
+  rules:
+  - uid: flp-abstain-rate
+    title: Abstain rate over 40% in 1 h with more than 20 requests
+    condition: E
+    for: 5m
+    noDataState: OK
+    execErrState: Error
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 3600
+        to: 0
+      datasourceUid: ${DS_PROMETHEUS}
+      model:
+        refId: A
+        expr: sum(increase(rag_requests{http_route="/ask", status="no_information"}[1h])) / clamp_min(sum(increase(rag_requests{http_route="/ask"}[1h])), 1)
+        instant: true
+        range: false
+        intervalMs: 60000
+        maxDataPoints: 1
+    - refId: B
+      relativeTimeRange:
+        from: 3600
+        to: 0
+      datasourceUid: ${DS_PROMETHEUS}
+      model:
+        refId: B
+        expr: sum(increase(rag_requests{http_route="/ask"}[1h]))
+        instant: true
+        range: false
+        intervalMs: 60000
+        maxDataPoints: 1
+    - refId: C
+      datasourceUid: __expr__
+      model:
+        refId: C
+        type: reduce
+        expression: A
+        reducer: last
+        settings:
+          mode: dropNN
+    - refId: D
+      datasourceUid: __expr__
+      model:
+        refId: D
+        type: reduce
+        expression: B
+        reducer: last
+        settings:
+          mode: dropNN
+    - refId: E
+      datasourceUid: __expr__
+      model:
+        refId: E
+        type: math
+        expression: $C > 0.40 && $D > 20
+    annotations:
+      summary: The index or the gate broke (spec 7.10).
+    labels:
+      severity: page
+      source: flp-rag
+  - uid: flp-p95-latency
+    title: p95 latency of rag.request over 8 s for 10 min
+    condition: C
+    for: 10m
+    noDataState: OK
+    execErrState: Error
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 600
+        to: 0
+      datasourceUid: ${DS_PROMETHEUS}
+      model:
+        refId: A
+        expr: histogram_quantile(0.95, sum by (le) (rate(rag_stage_latency_ms_bucket{span_name="rag.request"}[10m])))
+        instant: true
+        range: false
+        intervalMs: 60000
+        maxDataPoints: 1
+    - refId: B
+      datasourceUid: __expr__
+      model:
+        refId: B
+        type: reduce
+        expression: A
+        reducer: last
+        settings:
+          mode: dropNN
+    - refId: C
+      datasourceUid: __expr__
+      model:
+        refId: C
+        type: threshold
+        expression: B
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 8000
+    annotations:
+      summary: 'A provider or the vector store is slow (spec 7.10). The latency histogram has no route label: every root span counts, so frequent health checks lower this p95; eval/dashboard.py reads /ask only.'
+    labels:
+      severity: page
+      source: flp-rag
+  - uid: flp-errors
+    title: More than 5 span errors in 10 min
+    condition: C
+    for: 0m
+    noDataState: OK
+    execErrState: Error
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 600
+        to: 0
+      datasourceUid: ${DS_PROMETHEUS}
+      model:
+        refId: A
+        expr: sum(increase(rag_errors[10m]))
+        instant: true
+        range: false
+        intervalMs: 60000
+        maxDataPoints: 1
+    - refId: B
+      datasourceUid: __expr__
+      model:
+        refId: B
+        type: reduce
+        expression: A
+        reducer: last
+        settings:
+          mode: dropNN
+    - refId: C
+      datasourceUid: __expr__
+      model:
+        refId: C
+        type: threshold
+        expression: B
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 5
+    annotations:
+      summary: A stage fails (spec 7.10).
+    labels:
+      severity: page
+      source: flp-rag
+  - uid: flp-faithfulness
+    title: Faithfulness fail rate over 10% in 1 h
+    condition: C
+    for: 5m
+    noDataState: OK
+    execErrState: Error
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 3600
+        to: 0
+      datasourceUid: ${DS_PROMETHEUS}
+      model:
+        refId: A
+        expr: sum(increase(rag_requests{http_route="/ask", abstain_reason="output.unfaithful"}[1h])) / clamp_min(sum(increase(rag_requests{http_route="/ask", status="answered"}[1h])) + sum(increase(rag_requests{http_route="/ask", abstain_reason="output.unfaithful"}[1h])), 1)
+        instant: true
+        range: false
+        intervalMs: 60000
+        maxDataPoints: 1
+    - refId: B
+      datasourceUid: __expr__
+      model:
+        refId: B
+        type: reduce
+        expression: A
+        reducer: last
+        settings:
+          mode: dropNN
+    - refId: C
+      datasourceUid: __expr__
+      model:
+        refId: C
+        type: threshold
+        expression: B
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 0.1
+    annotations:
+      summary: 'The prompt or the model changed behaviour (spec 7.10). Approximation: unfaithful / (answered + unfaithful) keeps the unjudged answers in the denominator, so it understates the judged rate; the exact rate is eval/dashboard.py.'
+    labels:
+      severity: ticket
+      source: flp-rag
+  - uid: flp-cost
+    title: Model cost over USD 2 per day
+    condition: C
+    for: 0m
+    noDataState: OK
+    execErrState: Error
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 86400
+        to: 0
+      datasourceUid: ${DS_PROMETHEUS}
+      model:
+        refId: A
+        expr: sum(increase(rag_cost_usd[24h]))
+        instant: true
+        range: false
+        intervalMs: 60000
+        maxDataPoints: 1
+    - refId: B
+      datasourceUid: __expr__
+      model:
+        refId: B
+        type: reduce
+        expression: A
+        reducer: last
+        settings:
+          mode: dropNN
+    - refId: C
+      datasourceUid: __expr__
+      model:
+        refId: C
+        type: threshold
+        expression: B
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 2
+    annotations:
+      summary: A loop or a cache failure (spec 7.10).
+    labels:
+      severity: ticket
+      source: flp-rag
