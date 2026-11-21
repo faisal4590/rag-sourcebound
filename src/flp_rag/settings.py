@@ -263,6 +263,7 @@ class CacheConfig(_Section):
     semantic_enabled: bool = False
     similarity_threshold: float = Field(ge=0, le=1)
     ttl_hours: int = Field(ge=0)
+    store_path: str  # the answer cache file (issue #40), relative to config.yaml
 
 
 class TraceConfig(_Section):

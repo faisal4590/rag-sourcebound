@@ -480,6 +480,7 @@ def make_check_output(
             c = outcome.verdict.completion
             out["input_tokens"] = int(state.get("input_tokens", 0)) + c.input_tokens
             out["output_tokens"] = int(state.get("output_tokens", 0)) + c.output_tokens
+            out["faithful"] = outcome.verdict.supported  # Stage 19 stores only a judged answer
         if outcome.result == "ok":
             out |= {"status": "answered", "answer": outcome.answer, "repair_failure": None}
         elif outcome.result == "repair":

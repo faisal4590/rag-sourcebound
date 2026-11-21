@@ -65,6 +65,7 @@ from flp_rag.ingest.s06_s07_index import (
 )
 from flp_rag.models import get_embeddings, get_reranker, get_sparse_embeddings
 from flp_rag.settings import Settings, load_settings
+from flp_rag.stores.answer_cache import AnswerCache
 from flp_rag.stores.embedding_cache import EmbeddingCache
 from flp_rag.stores.session_store import SessionStore
 
@@ -125,6 +126,11 @@ def build_deps(settings: Settings) -> Deps:
         ttl_hours=settings.session.ttl_hours,
         excerpt_chars=settings.session.answer_excerpt_chars,
     )
+    answers = (
+        AnswerCache(root / settings.cache.store_path, ttl_hours=settings.cache.ttl_hours)
+        if settings.cache.semantic_enabled
+        else None
+    )
     return Deps(
         settings=settings,
         client=qdrant_client(settings),
@@ -135,6 +141,7 @@ def build_deps(settings: Settings) -> Deps:
         reranker=get_reranker(settings) if settings.rerank.enabled else None,
         cache=cache,
         sessions=sessions,
+        answers=answers,
     )
 
 
@@ -166,13 +173,20 @@ def create_app(
         version, collection = current_index_version(settings, d)
         if version is not None and d.store_path is None:
             d.store_path = default_index_dir(settings) / version / STORE_FILE
+        prompt = prompt_version(settings)
+        if d.answers is not None and version is not None:  # Stage 19 rule 5
+            dropped = d.answers.purge_other_versions(
+                index_version=version, prompt_version=prompt, config_hash=settings.config_hash
+            )
+            expired = d.answers.purge_expired()
+            log.info("answer cache ready", rows=d.answers.count(), dropped=dropped, expired=expired)
         app.state.rag = AppState(
             settings=settings,
             deps=d,
             graph=graph_factory(d),
             index_version=version,
             collection=collection,
-            prompt_version=prompt_version(settings),
+            prompt_version=prompt,
         )
         log.info("api ready", index_version=version, collection=collection, port=settings.api.port)
         yield
@@ -180,6 +194,8 @@ def create_app(
             d.cache.close()
         if owns_deps and d.sessions is not None:
             d.sessions.close()
+        if owns_deps and d.answers is not None:
+            d.answers.close()
         if configure_tracing:
             tracing.shutdown_tracing()
 
@@ -281,6 +297,9 @@ def create_app(
         span.set_attribute("rag.status", response.status)
         span.set_attribute("rag.abstain_reason", final.get("abstain_reason") or "")
         span.set_attribute("rag.cost_usd", float(final.get("cost_usd", 0.0)))
+        span.set_attribute("cache.hit", bool(final.get("cache_hit", False)))  # Stage 19
+        if final.get("cache_similarity") is not None:
+            span.set_attribute("cache.similarity", float(final["cache_similarity"]))
         if body.stream:
             return StreamingResponse(_sse(response), media_type="text/event-stream")
         return response

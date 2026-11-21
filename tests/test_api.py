@@ -142,6 +142,55 @@ def _client(
 # --------------------------------------------------------------------------- /ask
 
 
+def test_startup_purges_cache_rows_of_other_versions(
+    tmp_path: Path, exporter: InMemorySpanExporter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Stage 19 rule 5 (issue #40): the rows of an old index, prompt, or configuration go at
+    startup; the rows of the current ones stay."""
+    from flp_rag.stores.answer_cache import AnswerCache
+
+    settings = load_settings().model_copy(update={"config_path": tmp_path / "config.yaml"})
+    (tmp_path / "config.yaml").write_text((ROOT / "config.yaml").read_text())
+    prompt_dir = tmp_path / "prompts"
+    prompt_dir.mkdir()
+    (prompt_dir / "answer_v1.md").write_text((ROOT / "prompts" / "answer_v1.md").read_text())
+    version = "v7-test-abcdef01"
+    manifest_dir = tmp_path / "data" / "index" / version
+    manifest_dir.mkdir(parents=True)
+    (manifest_dir / "manifest.json").write_text(json.dumps({"index_version": version}))
+    client = QdrantClient(":memory:")
+    client.create_collection(
+        f"flp_chunks_{version}",
+        vectors_config={"dense": models.VectorParams(size=4, distance=models.Distance.COSINE)},
+    )
+    client.update_collection_aliases(
+        change_aliases_operations=[
+            models.CreateAliasOperation(
+                create_alias=models.CreateAlias(
+                    collection_name=f"flp_chunks_{version}", alias_name=settings.index.alias
+                )
+            )
+        ]
+    )
+    answers = AnswerCache(tmp_path / "answers.sqlite", ttl_hours=168)
+    current = {
+        "index_version": version,
+        "prompt_version": api.prompt_version(settings),
+        "config_hash": settings.config_hash,
+        "embed_model": settings.embed.model,
+    }
+    answers.put([1.0, 0.0], question="keep", answer="A [S1]", sources=[], **current)
+    old = {**current, "index_version": "v6-old"}
+    answers.put([1.0, 0.0], question="old", answer="A [S1]", sources=[], **old)
+    deps = build.Deps(settings=settings, client=client, answers=answers)
+    app = api.create_app(
+        settings, deps=deps, graph_factory=_stub_graph_factory(), configure_tracing=False
+    )
+    with TestClient(app, raise_server_exceptions=False):
+        assert answers.count() == 1
+    answers.close()
+
+
 def test_ask_returns_a_typed_response_with_trace_id(
     tmp_path: Path, exporter: InMemorySpanExporter
 ) -> None:
@@ -169,6 +218,7 @@ def test_ask_returns_a_typed_response_with_trace_id(
         if s.parent and s.parent.span_id == root.context.span_id
     }
     assert {"guardrails.input", "response.build"} <= children
+    assert a["cache.hit"] is False  # Stage 19 (issue #40): the root span says so on every request
 
 
 def test_ask_debug_and_filters_and_abstain(tmp_path: Path, exporter: InMemorySpanExporter) -> None:

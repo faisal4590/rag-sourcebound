@@ -42,6 +42,11 @@ class RagState(TypedDict, total=False):
     # guardrails (Stage 10)
     injection_suspected: bool
     language: str
+    # semantic answer cache (Stage 19, issue #40)
+    cache_hit: bool
+    cache_similarity: float  # cosine of the hit; absent on a miss
+    cache_skipped: str  # why the lookup did not run (`history`); absent otherwise
+    question_vector: list[float]  # the raw question's dense vector, for the store at Stage 18
     # query understanding (Stage 11)
     standalone: StandaloneQuery | None
     # retrieval and reranking (Stages 12-13)
@@ -58,6 +63,7 @@ class RagState(TypedDict, total=False):
     prompt_version: str  # sha256(prompt file)[:8] of the prompt that produced the answer
     repair_calls: int  # model repair calls spent so far (budget gen.max_repair_calls)
     check_result: CheckResult
+    faithful: bool | None  # the Stage 17 judge's verdict when it ran; Stage 19 stores only True
     repair_failure: str | None  # Stage 17 -> 16: the line that names the failed check
     rejected_answer: str | None  # the answer Stage 17 sent back or replaced
     # response (Stage 18)
