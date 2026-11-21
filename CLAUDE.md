@@ -208,7 +208,12 @@ field (`rerank.top` after the reranker, the new `retrieval.fused` list before it
 chunk ids to printed pages through the parent store of the index the API reports; a hit is a
 page intersection within `eval.page_tolerance`. Metrics (spec 8.2-8.5, targets in
 `eval.targets_min` / `eval.targets_max`): Recall@5, MRR@10, nDCG@10 (binary gains),
-Recall@30 before the reranker (an abstained answerable case counts as a miss), faithfulness
+Recall@30 before the reranker (an abstained answerable case counts as a miss), Precision@5
+after the reranker and before it (issue #82, not in the spec: hits among the first five over
+five, several chunks of one section can hit, no target until a baseline run records one;
+`eval/rerank_eval.py` prints the same two numbers from a local pass; measured 2026-11-21 on
+the 60 answerable cases: fused 0.440, reranked 0.393, so the reranker lifts the best chunk
+(MRR@10 0.900 to 0.936) and spreads the rest over other pages), faithfulness
 (the API's verdict, read on abstained rows too because `supported: false` abstains), correctness
 (a second judge, `prompts/judge_correctness_v1.md`, score 0/1/2 against `expected_answer`,
 mean / 2; an abstained answerable case scores 0 without a call; calls `eval.judge_pause_s`

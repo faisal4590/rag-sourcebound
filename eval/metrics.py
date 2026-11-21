@@ -15,11 +15,14 @@ from flp_rag.settings import EvalConfig
 
 GATE_PREFIX = "gate."  # abstain reasons decided at Stage 14
 RECALL_K, MRR_K, FUSED_K = 5, 10, 30  # the k of recall_at_5, mrr_at_10 / ndcg_at_10, recall_at_30
+PRECISION_K = 5  # precision_at_5 and precision_at_5_prerank (issue #82)
 METRIC_NAMES = (
     "recall_at_5",
+    "precision_at_5",
     "mrr_at_10",
     "ndcg_at_10",
     "recall_at_30_prerank",
+    "precision_at_5_prerank",
     "faithfulness",
     "correctness",
     "citation_accuracy",
@@ -72,6 +75,13 @@ def ndcg_at(hits: Sequence[bool], k: int) -> float:
     return dcg / ideal if ideal else 0.0
 
 
+def precision_at(hits: Sequence[bool], k: int) -> float:
+    """Hits among the first k over k (issue #82). A list shorter than k keeps k as the
+    denominator: a reranker that returns three chunks has not filled the top five. Several
+    chunks of one section can hit the same expected pages, so the value runs 0 to 1."""
+    return sum(hits[:k]) / k if k else 0.0
+
+
 def percentile(values: Sequence[float], p: float) -> float:
     """Inclusive linear interpolation, like numpy's default."""
     if not values:
@@ -105,6 +115,8 @@ class CaseResult:
     rank_rerank: int | None
     rank_fused: int | None
     ndcg_10: float | None
+    precision_5: float | None  # hits in the first five of `rerank.top` over five, answerable only
+    precision_5_fused: float | None  # the same over the fused list before the reranker
     cited_total: int
     cited_hits: int
     code_present: bool | None
@@ -144,12 +156,15 @@ def evaluate_case(
     fused_ids = list((debug.get("retrieval") or {}).get("fused") or [])[:FUSED_K]
     expected = list(case.expected_pages_printed)
     rank_rerank = rank_fused = None
-    ndcg = None
+    ndcg = precision = precision_fused = None
     if case.group == "answerable":
         flags = hit_flags(top_ids, pages_of, expected, tolerance=tolerance)
+        fused_flags = hit_flags(fused_ids, pages_of, expected, tolerance=tolerance)
         rank_rerank = next((i for i, hit in enumerate(flags, 1) if hit), None)
+        rank_fused = next((i for i, hit in enumerate(fused_flags, 1) if hit), None)
         ndcg = ndcg_at(flags, MRR_K)
-        rank_fused = first_hit_rank(fused_ids, pages_of, expected, tolerance=tolerance)
+        precision = precision_at(flags, PRECISION_K)
+        precision_fused = precision_at(fused_flags, PRECISION_K)
     sources = (body.get("sources") or []) if answered else []
     cited_hits = sum(
         1
@@ -177,6 +192,8 @@ def evaluate_case(
         rank_rerank=rank_rerank,
         rank_fused=rank_fused,
         ndcg_10=ndcg,
+        precision_5=precision,
+        precision_5_fused=precision_fused,
         cited_total=len(sources),
         cited_hits=cited_hits,
         code_present=code_present,
@@ -199,6 +216,12 @@ def _share(flags: Sequence[bool]) -> float | None:
     return sum(flags) / len(flags) if flags else None
 
 
+def _mean_or_zero(values: Sequence[float | None]) -> float | None:
+    """Mean over the rows, a row without a list (no retrieval ran) counting as 0; None without
+    rows."""
+    return statistics.fmean([v or 0.0 for v in values]) if values else None
+
+
 def _metric(value: float | None, n: int, target: float | None, *, higher: bool) -> dict[str, Any]:
     ok = None
     if target is not None and value is not None:
@@ -213,10 +236,11 @@ def _f1(precision: float | None, recall: float | None) -> float | None:
 
 
 def compute_metrics(results: Sequence[CaseResult], cfg: EvalConfig) -> dict[str, dict[str, Any]]:
-    """Spec 8.2-8.5. Retrieval over the answerable cases; faithfulness over the judged
-    answerable cases (an `output.unfaithful` abstain counts as unfaithful); correctness over the
-    answerable cases that did not error (an abstain scores 0); abstention and latency over
-    every case, an error row being neither an abstain nor a correct answer."""
+    """Spec 8.2-8.5 plus Precision@5 (issue #82). Retrieval over the answerable cases;
+    faithfulness over the judged answerable cases (an `output.unfaithful` abstain counts as
+    unfaithful); correctness over the answerable cases that did not error (an abstain scores
+    0); abstention and latency over every case, an error row being neither an abstain nor a
+    correct answer."""
     unknown = (set(cfg.targets_min) | set(cfg.targets_max)) - set(METRIC_NAMES)
     if unknown:
         raise ValueError(f"eval targets name unknown metrics: {sorted(unknown)}")
@@ -242,12 +266,14 @@ def compute_metrics(results: Sequence[CaseResult], cfg: EvalConfig) -> dict[str,
     gate = [bool(r.abstain_reason and r.abstain_reason.startswith(GATE_PREFIX)) for r in abstains]
     values: dict[str, tuple[float | None, int]] = {
         "recall_at_5": (_share(in_top), len(answerable)),
+        "precision_at_5": (_mean_or_zero([r.precision_5 for r in answerable]), len(answerable)),
         "mrr_at_10": (statistics.fmean(reciprocal) if reciprocal else None, len(answerable)),
-        "ndcg_at_10": (
-            statistics.fmean([r.ndcg_10 or 0.0 for r in answerable]) if answerable else None,
+        "ndcg_at_10": (_mean_or_zero([r.ndcg_10 for r in answerable]), len(answerable)),
+        "recall_at_30_prerank": (_share(fused_hit), len(answerable)),
+        "precision_at_5_prerank": (
+            _mean_or_zero([r.precision_5_fused for r in answerable]),
             len(answerable),
         ),
-        "recall_at_30_prerank": (_share(fused_hit), len(answerable)),
         "faithfulness": (_share(faithful), len(faithful)),
         "correctness": (statistics.fmean(correct) / 2 if correct else None, len(correct)),
         "citation_accuracy": (cited_hits / cited_total if cited_total else None, cited_total),
