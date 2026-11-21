@@ -6,6 +6,7 @@ One live test hits /health against the running services and skips without them.
 
 import contextlib
 import json
+import re
 import time
 from collections.abc import Iterator
 from pathlib import Path
@@ -137,6 +138,24 @@ def _client(
     )
     with TestClient(app, raise_server_exceptions=False) as client:
         yield client, version
+
+
+# --------------------------------------------------------------------------- the chat page
+
+
+def test_root_serves_the_chat_page(tmp_path: Path, exporter: InMemorySpanExporter) -> None:
+    """The page is one static file: no build step, no CDN, no new dependency."""
+    with _client(tmp_path, exporter) as (client, _):
+        r = client.get("/")
+        assert r.status_code == 200 and r.headers["content-type"].startswith("text/html")
+        page = r.text
+        assert "<title>Front Line PHP</title>" in page
+        assert 'fetch("/ask"' in page and 'fetch("/health")' in page and "session_id" in page
+        assert re.findall(r'(?:src|href)="https?:', page) == []  # no CDN, no external asset
+        assert r.headers["Cache-Control"] == "no-cache"
+        assert "script-src 'unsafe-inline'" in r.headers["Content-Security-Policy"]
+        assert len(r.headers["X-Trace-Id"]) == 32  # the middleware traces this request too
+        assert client.get("/health").status_code == 200  # the other routes are untouched
 
 
 # --------------------------------------------------------------------------- /ask

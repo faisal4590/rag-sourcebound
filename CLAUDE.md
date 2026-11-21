@@ -18,7 +18,10 @@ Purpose, Input and output, Rules, Configuration, Trace span, Done when.
 `compile_default`; every node runs under its spec span, routing after `understand` and `gate`),
 Stage 12 hybrid retrieval in `graph/nodes/retrieve.py`, `flp retrieve` (dense listing only), and the
 Stage 9 FastAPI app in `api/app.py` (`create_app`, `POST /ask` with SSE, `POST /feedback` stub,
-`GET /health`; `make serve` runs it on :8000). Every response carries `trace_id` and the
+`GET /health`, and `GET /` = the chat page `api/static/index.html` of issue #85, one static file
+that posts to `/ask` with a per-conversation `session_id`, renders the answer with `[Sn]`
+badges and the sources table, shows status, latency, trace id, cache hit, and a debug panel;
+`/?q=...` asks on load; `make serve` runs it on :8000). Every response carries `trace_id` and the
 `X-Trace-Id` header; a middleware opens `rag.request` per request, unhandled errors answer 500
 (501 for a `NotImplementedError` placeholder) inside that span, timeouts answer 504. Stage 10 input guardrails in `graph/nodes/guard_input.py` (length check raises `InputRejected`,
 which the API answers as HTTP 400 `question must be 1-2000 characters`; injection regexes and the
