@@ -274,6 +274,8 @@ class TraceConfig(_Section):
     attr_string_max_chars: int = Field(default=1_000, gt=0)
     attr_json_max_chars: int = Field(default=4_000, gt=0)  # a list or record attribute (#29)
     max_span_attributes: int = Field(default=1_024, gt=128)  # OTel drops the oldest past this
+    metrics_endpoint: str = ""  # OTLP/HTTP metrics endpoint (issue #30); empty = no export
+    metrics_export_interval_s: float = Field(default=15, gt=0)
     export_timeout_s: float = Field(default=10, gt=0)
     instrument_langchain: bool = False
 
