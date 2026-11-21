@@ -53,9 +53,10 @@ from flp_rag.settings import Settings
 from flp_rag.stores.answer_cache import AnswerCache
 from flp_rag.stores.embedding_cache import EmbeddingCache
 from flp_rag.stores.session_store import SessionStore
-from flp_rag.tracing import stage
+from flp_rag.tracing import debug_requested, get_logger, stage
 
 Node = Callable[[RagState], dict[str, Any]]
+log = get_logger(__name__)
 
 # node name -> (span name, openinference kind), spec Section 7.4
 SPANS: dict[str, tuple[str, str]] = {
@@ -123,6 +124,8 @@ def _traced(name: str, fn: Node) -> Node:
 
     def finish(update: dict[str, Any] | None, started: float) -> dict[str, Any]:
         elapsed = int((time.perf_counter() - started) * 1000)
+        if debug_requested():  # spec 7.8 rule 4: one DEBUG line per stage of a debug request
+            log.debug("stage", stage=span_name, latency_ms=elapsed, keys=sorted(update or {}))
         return {**(update or {}), "visited": [name], "timings_ms": {span_name: elapsed}}
 
     if getattr(fn, "self_traced", False):  # the function opens the span itself (#29)

@@ -19,6 +19,8 @@ truncated marker, and a content attribute (question text, prompts, book text) is
 `trace.capture_content` is false. `current_span()` returns a thin proxy that applies them.
 """
 
+import contextlib
+import contextvars
 import functools
 import inspect
 import json
@@ -26,18 +28,20 @@ import logging
 import subprocess
 import sys
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import asdict, is_dataclass
 from typing import Any, Literal, Protocol, runtime_checkable
 
 import structlog
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.metrics.export import MetricReader
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import SpanLimits, TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, SimpleSpanProcessor, SpanExporter
 from opentelemetry.trace import Status, StatusCode
 
+from flp_rag import metrics as metrics_mod
 from flp_rag.settings import Settings
 from flp_rag.span_registry import CONTENT_VALUES, Registry, load_registry
 
@@ -76,8 +80,11 @@ def configure_tracing(
     exporter: SpanExporter | None = None,
     *,
     force: bool = False,
+    metric_reader: MetricReader | None = None,
 ) -> TracerProvider:
-    """Install the tracer provider once. Pass `exporter` to override OTLP (tests).
+    """Install the tracer provider once, and with it the meter provider and the span processor
+    that derives the metrics of spec 7.7 from finished spans (issue #30). Pass `exporter` to
+    override OTLP (tests), `metric_reader` to read the metrics in a test.
 
     `force=True` replaces a provider installed earlier in the same process.
     """
@@ -112,7 +119,9 @@ def configure_tracing(
         provider.add_span_processor(SimpleSpanProcessor(exporter))
 
     if _State.provider is not None:
-        _State.provider.shutdown()
+        _State.provider.shutdown()  # the old tracer first, so its processor records no more
+    metrics_mod.configure_metrics(settings, resource, reader=metric_reader)
+    provider.add_span_processor(metrics_mod.SpanMetricsProcessor())
     # The global provider can be set only once per process. Later calls go through our own handle.
     if not isinstance(trace.get_tracer_provider(), TracerProvider):
         trace.set_tracer_provider(provider)
@@ -157,11 +166,12 @@ def instrument_langchain(provider: TracerProvider, config: Any | None = None) ->
 
 
 def shutdown_tracing() -> None:
-    """Flush and stop the provider. Call at process exit so short scripts export their spans."""
+    """Flush and stop the providers. Call at process exit so short scripts export their spans."""
     if _State.provider is not None:
         _State.provider.force_flush()
         _State.provider.shutdown()
         _State.provider = None
+    metrics_mod.shutdown_metrics()
 
 
 def _tracer() -> trace.Tracer:
@@ -260,6 +270,37 @@ def _on_error(span: trace.Span, exc: BaseException, started: float) -> None:
     span.record_exception(exc)
     span.set_status(Status(StatusCode.ERROR, f"{type(exc).__name__}: {exc}"))
     RuledSpan(span).set_attribute("rag.latency_ms", _elapsed_ms(started))
+    log_error_once(exc, span=getattr(span, "name", ""))
+
+
+_LOGGED = "_flp_logged"  # the mark on an exception that has its ERROR line already
+
+
+def _members(exc: BaseException) -> list[BaseException]:
+    """The exception and, for an exception group, the ones inside it."""
+    inner = getattr(exc, "exceptions", None)
+    return [exc, *(e for sub in (inner or ()) for e in _members(sub))]
+
+
+def log_error_once(exc: BaseException, *, span: str) -> bool:
+    """Spec 7.8 rule 5: one ERROR line per failure with the exception type, the message, and
+    the span name, never the stack trace (the span holds it). The parents a stage error passes
+    through on its way out, and the API handler, see the mark and stay quiet. The mark is an
+    attribute on the exception object itself (exceptions take no weak references), so it
+    crosses the thread and task boundaries a stage error crosses, and a group that wraps a
+    logged exception is quiet too."""
+    if any(getattr(e, _LOGGED, False) for e in _members(exc)):
+        return False
+    with contextlib.suppress(AttributeError, TypeError):  # a rare type that refuses attributes
+        setattr(exc, _LOGGED, True)
+    content = _State.capture_content  # a message can carry the question or a provider body
+    get_logger(__name__).error(
+        "stage failed",
+        span=span,
+        exception_type=type(exc).__name__,
+        message=str(exc)[: _State.attr_string_max_chars] if content else "(content off)",
+    )
+    return True
 
 
 def _elapsed_ms(started: float) -> int:
@@ -366,18 +407,75 @@ def _jsonable(value: Any) -> Any:
 
 # --------------------------------------------------------------------------- logging
 
+_REQUEST_ID: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "flp_request_id", default=None
+)
+_INDEX_VERSION: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "flp_index_version", default=None
+)
+_DEBUG: contextvars.ContextVar[bool] = contextvars.ContextVar("flp_debug", default=False)
+
+
+@contextlib.contextmanager
+def request_context(
+    *, request_id: str, index_version: str | None, debug: bool = False
+) -> Iterator[None]:
+    """The request facts every log line of the request carries (spec 7.8 rule 2) and the
+    `debug` flag that lets its DEBUG lines through (rule 4). Stage 9 opens it per request."""
+    tokens = (
+        _REQUEST_ID.set(request_id),
+        _INDEX_VERSION.set(index_version or None),
+        _DEBUG.set(debug),
+    )
+    try:
+        yield
+    finally:
+        _REQUEST_ID.reset(tokens[0])
+        _INDEX_VERSION.reset(tokens[1])
+        _DEBUG.reset(tokens[2])
+
+
+def debug_requested() -> bool:
+    return _DEBUG.get()
+
+
+def set_debug(flag: bool) -> None:
+    """Mark the current request as a debug request once its body is known (the handler runs in
+    the request's own task, so the flag never leaks to another request)."""
+    _DEBUG.set(flag)
+
+
+def get_logger(name: str = SERVICE_NAME) -> Any:
+    return structlog.get_logger(name)
+
 
 def add_trace_context(
     _logger: Any, _method: str, event_dict: dict[str, Any]
 ) -> dict[str, Any]:
-    """structlog processor: inject `trace_id` and `span_id` from the active span."""
+    """structlog processor: `trace_id` and `span_id` from the active span, `request_id` and
+    `index_version` from the request context (spec 7.8 rule 2)."""
     ctx = trace.get_current_span().get_span_context()
     if ctx.is_valid:
-        return {
+        event_dict = {
             **event_dict,
             "trace_id": format(ctx.trace_id, "032x"),
             "span_id": format(ctx.span_id, "016x"),
         }
+    request_id, index_version = _REQUEST_ID.get(), _INDEX_VERSION.get()
+    if request_id is not None and not event_dict.get("request_id"):
+        event_dict["request_id"] = request_id
+    if index_version is not None and not event_dict.get("index_version"):
+        event_dict["index_version"] = index_version  # an empty value yields to the context
+    return event_dict
+
+
+def drop_debug_unless_requested(
+    _logger: Any, method: str, event_dict: dict[str, Any]
+) -> dict[str, Any]:
+    """structlog processor, spec 7.8 rule 4: DEBUG lines exist only inside a request that asked
+    for `debug: true`; every other DEBUG line is dropped before rendering."""
+    if method == "debug" and not _DEBUG.get():
+        raise structlog.DropEvent
     return event_dict
 
 
@@ -391,11 +489,14 @@ class _StdoutLogger:
     log = debug = info = warning = warn = error = critical = exception = fatal = msg
 
 
-def configure_logging(level: int = logging.INFO) -> None:
-    """structlog with JSON output to stdout. Every line carries trace_id and span_id."""
+def configure_logging(level: int = logging.DEBUG) -> None:
+    """structlog with JSON output to stdout. Every line carries trace_id, span_id, request_id,
+    and index_version; DEBUG lines pass only inside a debug request (`drop_debug_unless_requested`),
+    so the level filter stays at DEBUG and the request decides."""
     structlog.configure(
         processors=[
             structlog.contextvars.merge_contextvars,
+            drop_debug_unless_requested,
             add_trace_context,
             structlog.processors.add_log_level,
             structlog.processors.TimeStamper(fmt="iso", utc=True),

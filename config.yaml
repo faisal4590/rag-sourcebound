@@ -181,6 +181,8 @@ trace:
   max_span_attributes: 1024      # OTel's default of 128 drops the oldest; 30 documents need ~150
   export_timeout_s: 10           # OTLP export timeout; bounds shutdown when Phoenix is down
   instrument_langchain: false    # extra LangChain/LangGraph spans from OpenInference; our @stage spans are the contract
+  metrics_endpoint: ""           # OTLP/HTTP metrics (spec 7.7, issue #30), e.g. http://localhost:4318/v1/metrics; "" = none
+  metrics_export_interval_s: 15
 
 eval:                            # Milestone 6 harness (issue #34), spec Sections 8.2-8.6
   golden_file: eval/golden_v1.jsonl

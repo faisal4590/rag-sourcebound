@@ -41,7 +41,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from langgraph.graph.state import CompiledStateGraph
 from opentelemetry.trace import Status, StatusCode
 
-from flp_rag import tracing
+from flp_rag import metrics, tracing
 from flp_rag.api.schemas import (
     AskRequest,
     AskResponse,
@@ -236,10 +236,13 @@ def create_app(
                 span.set_attribute("rag.prompt_version", st.prompt_version)
                 span.set_attribute("rag.config_hash", st.settings.config_hash)
             started = time.perf_counter()
-            try:
-                response = await call_next(request)
-            except Exception as exc:  # noqa: BLE001 - every failure must answer with a trace id
-                response = _error_response(exc, trace_id, request.url.path)
+            index_version = st.index_version if st is not None else None
+            with tracing.request_context(request_id=request_id, index_version=index_version):
+                # every log line of this request carries request_id and index_version (7.8)
+                try:
+                    response = await call_next(request)
+                except Exception as exc:  # noqa: BLE001 - every failure answers with a trace id
+                    response = _error_response(exc, trace_id, request.url.path)
             span.set_attribute("rag.latency_ms", int((time.perf_counter() - started) * 1000))
             span.set_attribute("http.status_code", response.status_code)
             if response.status_code >= 400:
@@ -277,6 +280,7 @@ def create_app(
     async def ask(request: Request, body: AskRequest) -> Any:
         st: AppState = request.app.state.rag
         span = tracing.current_span()
+        tracing.set_debug(body.debug)  # spec 7.8 rule 4: this request's DEBUG lines pass
         span.set_attribute("rag.session_id", body.session_id)  # the sentinel without one
         span.set_attribute("rag.question_raw", body.question)  # content: off with the switch
         run_tag = body.run_tag if body.debug else None  # Part 2 of issue #28
@@ -335,6 +339,7 @@ def create_app(
     async def feedback(request: Request, body: FeedbackRequest) -> dict[str, Any]:
         """Milestone 3 stub: accepted and logged. Milestone 5 (#31) writes the score to the trace."""
         log.info("feedback", trace_id=body.trace_id, rating=body.rating, comment=body.comment or "")
+        metrics.record_feedback(body.rating)  # spec 7.7 `rag.user_feedback` (issue #30)
         return {"ok": True, "trace_id": request.state.trace_id}
 
     @app.get("/health", response_model=HealthResponse)
@@ -388,7 +393,7 @@ def _record_error(exc: Exception, path: str, trace_id: str) -> None:
     span = tracing.current_span()
     span.record_exception(exc)
     span.set_status(Status(StatusCode.ERROR, f"{type(exc).__name__}: {exc}"[:200]))
-    log.error("request failed", error=f"{type(exc).__name__}: {exc}", path=path, trace_id=trace_id)
+    tracing.log_error_once(exc, span="rag.request")  # quiet when a stage logged it already
 
 
 def error_status(exc: Exception, trace_id: str) -> tuple[int, str]:

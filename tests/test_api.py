@@ -21,6 +21,7 @@ from flp_rag import tracing
 from flp_rag.api import app as api
 from flp_rag.contracts import Source
 from flp_rag.graph import build
+from flp_rag.graph.nodes import respond as respond_mod
 from flp_rag.graph.state import RagState
 from flp_rag.settings import ABSTAIN_TEXT, load_settings
 from tests.test_graph_build import stub_nodes
@@ -75,6 +76,8 @@ def _stub_graph_factory(
                 if state.get("debug")
                 else None,
             )
+            # the one INFO line per request that the real Stage 18 writes (issue #30 reads it)
+            respond_mod.log_request(respond_mod.summarize(state, response, deps.settings))
             return {"status": status, "response": response, "sources": sources}
 
         return build.build_graph(
@@ -156,6 +159,64 @@ def test_root_serves_the_chat_page(tmp_path: Path, exporter: InMemorySpanExporte
         assert "script-src 'unsafe-inline'" in r.headers["Content-Security-Policy"]
         assert len(r.headers["X-Trace-Id"]) == 32  # the middleware traces this request too
         assert client.get("/health").status_code == 200  # the other routes are untouched
+
+
+# --------------------------------------------------------------------------- the log lines (#30)
+
+
+def _json_lines(text: str) -> list[dict[str, Any]]:
+    return [json.loads(line) for line in text.splitlines() if line.startswith("{")]
+
+
+def test_the_request_line_is_json_with_the_trace_id_of_the_response(
+    tmp_path: Path, exporter: InMemorySpanExporter, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Spec 7.8 rules 1-3, the Done-when of issue #30."""
+    tracing.configure_logging()
+    with _client(tmp_path, exporter) as (client, version):
+        r = client.post("/ask", json={"question": "What is a readonly property?"})
+    lines = _json_lines(capsys.readouterr().out)
+    requests = [line for line in lines if line["event"] == "request"]
+    assert len(requests) == 1
+    line = requests[0]
+    assert line["trace_id"] == r.json()["trace_id"] and len(line["span_id"]) == 16
+    root = next(s for s in exporter.get_finished_spans() if s.name == "rag.request")
+    assert line["request_id"] == root.attributes["rag.request_id"]  # the one the middleware minted
+    assert line["index_version"] == version and line["level"] == "info"
+    assert "question" not in json.dumps(line) and "readonly" not in json.dumps(line)
+    assert not [line for line in lines if line["level"] == "debug"]  # no debug lines asked
+
+
+def test_debug_requests_write_one_debug_line_per_stage(
+    tmp_path: Path, exporter: InMemorySpanExporter, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Spec 7.8 rule 4."""
+    tracing.configure_logging()
+    with _client(tmp_path, exporter) as (client, _):
+        client.post("/ask", json={"question": "What is a readonly property?", "debug": True})
+        client.post("/ask", json={"question": "What is a readonly property?"})
+    lines = _json_lines(capsys.readouterr().out)
+    debug = [line for line in lines if line["level"] == "debug"]
+    stages = [line["stage"] for line in debug]
+    assert "guardrails.input" in stages and "response.build" in stages
+    requests = {line["request_id"] for line in debug}
+    assert len(requests) == 1  # only the debug request wrote them
+    assert all(len(line["trace_id"]) == 32 for line in debug)
+
+
+def test_a_failing_stage_writes_one_error_line_without_a_stack_trace(
+    tmp_path: Path, exporter: InMemorySpanExporter, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Spec 7.8 rule 5."""
+    tracing.configure_logging()
+    with _client(tmp_path, exporter, raise_generic=True) as (client, _):
+        r = client.post("/ask", json={"question": "hello"})
+    out = capsys.readouterr().out
+    errors = [line for line in _json_lines(out) if line["level"] == "error"]
+    assert len(errors) == 1 and errors[0]["span"] == "llm.generate"
+    assert errors[0]["exception_type"] == "RuntimeError"
+    assert errors[0]["trace_id"] == r.json()["trace_id"]
+    assert "Traceback" not in out and "exception" not in errors[0]
 
 
 # --------------------------------------------------------------------------- /ask
