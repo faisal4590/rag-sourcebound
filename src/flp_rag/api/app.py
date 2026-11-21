@@ -37,7 +37,7 @@ import structlog
 import uuid_utils
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from langgraph.graph.state import CompiledStateGraph
 from opentelemetry.trace import Status, StatusCode
 
@@ -69,6 +69,7 @@ from flp_rag.stores.answer_cache import AnswerCache
 from flp_rag.stores.embedding_cache import EmbeddingCache
 from flp_rag.stores.session_store import SessionStore
 
+STATIC_DIR = Path(__file__).resolve().parent / "static"  # the chat page (issue #85)
 log = structlog.get_logger()
 
 GraphFactory = Callable[[Deps], CompiledStateGraph]
@@ -241,6 +242,21 @@ def create_app(
             trace_id=getattr(request.state, "trace_id", ""), detail=_first_error(exc)
         )
         return JSONResponse(status_code=422, content=body.model_dump())
+
+    @app.get("/", include_in_schema=False)
+    async def chat_page() -> FileResponse:
+        """The chat page (issue #85): one static file, served by the API so it needs no second
+        server and no CORS. It posts to `/ask` and reads `/health`."""
+        return FileResponse(
+            STATIC_DIR / "index.html",
+            media_type="text/html",
+            headers={
+                "Cache-Control": "no-cache",  # one file, always the current one
+                # the page is self-contained: inline style and script, calls only this origin
+                "Content-Security-Policy": "default-src 'self'; style-src 'unsafe-inline'; "
+                "script-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'",
+            },
+        )
 
     @app.post(
         "/ask",
