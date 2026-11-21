@@ -122,6 +122,14 @@ def test_first_hit_rank_and_ndcg() -> None:
     assert metrics.ndcg_at([True], 10) == 1.0 and metrics.ndcg_at([False, False], 10) == 0.0
 
 
+def test_precision_at_counts_hits_over_k_not_over_the_list_length() -> None:
+    # issue #82: two hits among the first five of eight -> 2/5; a short list keeps k as denominator
+    assert metrics.precision_at([True, False, True, False, False, True, True, True], 5) == 0.4
+    assert metrics.precision_at([True], 5) == pytest.approx(0.2)
+    assert metrics.precision_at([], 5) == 0.0
+    assert metrics.precision_at([True] * 8, 5) == 1.0
+
+
 # --------------------------------------------------------------------------- one case
 
 
@@ -132,6 +140,8 @@ def test_evaluate_case_reads_ranks_citations_code_and_faithfulness() -> None:
     )
     assert r.case_id == "g005" and r.status == "answered" and r.elapsed_ms == 1234
     assert r.rank_rerank == 2 and r.rank_fused == 2
+    # d:5:1 (64-65) hits, d:6:1 misses -> 1/5; fused: d:5:2 (66) hits with the tolerance -> 1/5
+    assert r.precision_5 == pytest.approx(0.2) and r.precision_5_fused == pytest.approx(0.2)
     assert r.cited_total == 1 and r.cited_hits == 1
     assert (
         r.code_present is True
@@ -151,6 +161,7 @@ def test_evaluate_case_abstain_and_error_rows() -> None:
         tolerance=1,
     )
     assert r.status == "no_information" and r.abstained and r.abstain_reason == "gate.low_top_score"
+    assert r.precision_5 is None and r.precision_5_fused is None  # not an answerable case
     assert (
         r.rank_rerank is None
         and r.cited_total == 0
@@ -248,6 +259,12 @@ def test_metrics_follow_the_spec_definitions() -> None:
     m = harness.compute_metrics(results(), load_settings().eval)
     # answerable: g001 hit@1, g002 hit@3, g003 miss, g004 abstained (no retrieval list -> miss)
     assert m["recall_at_5"]["value"] == pytest.approx(2 / 4)
+    # precision@5 (issue #82): g001 1/5, g002 1/5 (d:5:1 at rank 3), g003 0, g004 no list -> 0
+    assert m["precision_at_5"]["value"] == pytest.approx((0.2 + 0.2 + 0 + 0) / 4)
+    assert m["precision_at_5"]["target"] is None and m["precision_at_5"]["n"] == 4
+    assert harness.compute_metrics([], load_settings().eval)["precision_at_5"]["value"] is None
+    # fused: g001 [d:5:1] 1/5, g002 [d:6:1] 0, g003 [d:6:1, d:5:1] 1/5, g004 0
+    assert m["precision_at_5_prerank"]["value"] == pytest.approx((0.2 + 0 + 0.2 + 0) / 4)
     assert m["mrr_at_10"]["value"] == pytest.approx((1 + 1 / 3 + 0 + 0) / 4)
     assert m["recall_at_30_prerank"]["value"] == pytest.approx(
         2 / 4
@@ -646,7 +663,7 @@ def test_judge_retries_once_and_lets_a_config_error_through() -> None:
     )
     with pytest.raises(ModelConfigError):
         harness.make_judge(s, chat=Chat([ModelConfigError("placeholder")]))(case("g001"), "x")
-    assert metrics.METRIC_NAMES[0] == "recall_at_5"
+    assert metrics.METRIC_NAMES[:2] == ("recall_at_5", "precision_at_5")
 
 
 def test_score_cases_counts_judge_failures_and_lets_a_config_error_through() -> None:

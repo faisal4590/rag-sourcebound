@@ -7,9 +7,10 @@ group: out-of-domain best scores should sit under `gate.tau_low`; in-domain unan
 abstain through `gate.no_passing_chunk`, so the check for them is `gate.tau_pass`.
 
 Reports MRR@10 after fusion against MRR@10 after the reranker, Recall@8 (only 8 candidates go
-on), the best reranker score per question against the gate thresholds (answerable should sit
-above `gate.tau_pass`, off-topic below `gate.tau_low`), and the p50 / p95 latency of the rerank
-stage on this machine.
+on), Precision@5 after fusion and after the reranker (issue #82: hits by printed page like
+the harness, `eval.page_tolerance`), the best reranker score per question against the gate
+thresholds (answerable should sit above `gate.tau_pass`, off-topic below `gate.tau_low`), and
+the p50 / p95 latency of the rerank stage on this machine.
 
     uv run python eval/rerank_eval.py --json eval/runs/rerank_<date>.json
     uv run python eval/rerank_eval.py --rerank-model BAAI/bge-reranker-base   # trial run
@@ -40,6 +41,7 @@ from flp_rag.stores.parent_store import ParentStore
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from chunk_retrieval import mrr_at, recall_at
+from metrics import PRECISION_K, PagesOf, hit_flags, precision_at
 
 ROOT = Path(__file__).resolve().parents[1]
 GOLDEN = ROOT / "eval" / "golden_v1.jsonl"
@@ -54,6 +56,24 @@ def hit_rank(
         if any(q in text for q in norm_quotes):
             return rank
     return None
+
+
+def page_flags(
+    candidates: Sequence[Candidate], pages_of: PagesOf, expected: Sequence[int], *, tolerance: int
+) -> list[bool]:
+    """The harness hit rule per candidate: its printed page range, widened by the tolerance,
+    meets an expected page. `eval/metrics.py` owns the rule; this maps candidates onto it."""
+    return hit_flags([c.chunk_id for c in candidates], pages_of, expected, tolerance=tolerance)
+
+
+def precision5_means(rows: Sequence[dict[str, Any]]) -> tuple[float, float]:
+    """Precision@5 after fusion and after the reranker, averaged over the answerable rows."""
+    answerable = [row for row in rows if not row["abstain"]]
+    if not answerable:
+        return 0.0, 0.0
+    fused = statistics.fmean(row["precision5_fused"] or 0.0 for row in answerable)
+    reranked = statistics.fmean(row["precision5_reranked"] or 0.0 for row in answerable)
+    return fused, reranked
 
 
 def percentile(values: Sequence[float], p: float) -> float:
@@ -80,10 +100,27 @@ def run_case(case: EvalCase, settings: Settings, deps: Any, store: ParentStore) 
     started = time.perf_counter()
     result = rk.rerank(case.question, fused, reranker=deps.reranker, store=store, settings=settings)
     latency_ms = (time.perf_counter() - started) * 1000
-    texts = {
-        c.chunk_id: (store.get_chunk(c.chunk_id) or Chunk("", "", "", "", 0, {})).display_text
+    chunks = {  # `scored` holds every fused candidate, so this map covers both lists
+        c.chunk_id: store.get_chunk(c.chunk_id) or Chunk("", "", "", "", 0, {})
         for c in result.scored
     }
+    texts = {chunk_id: chunk.display_text for chunk_id, chunk in chunks.items()}
+
+    def pages_of(chunk_id: str) -> tuple[int, int] | None:
+        payload = chunks[chunk_id].payload if chunk_id in chunks else {}
+        start, end = payload.get("page_printed_start"), payload.get("page_printed_end")
+        return (int(start), int(end)) if start is not None and end is not None else None
+
+    expected = list(case.expected_pages_printed)
+    tolerance = settings.eval.page_tolerance
+    precision_fused = precision_reranked = None
+    if not case.expected_abstain:
+        precision_fused = precision_at(
+            page_flags(fused, pages_of, expected, tolerance=tolerance), PRECISION_K
+        )
+        precision_reranked = precision_at(  # `kept` is what the API reports as `rerank.top`
+            page_flags(result.kept, pages_of, expected, tolerance=tolerance), PRECISION_K
+        )
     return {
         "case_id": case.case_id,
         "group": case.group,
@@ -95,6 +132,8 @@ def run_case(case: EvalCase, settings: Settings, deps: Any, store: ParentStore) 
         "rank_reranked": hit_rank(result.scored, texts, case.evidence_quotes)
         if case.evidence_quotes
         else None,
+        "precision5_fused": precision_fused,
+        "precision5_reranked": precision_reranked,
         "score_top1": result.scores_all[0][1] if result.scores_all else 0.0,
         "scores": [s for _, s in result.scores_all],  # best first; eval/calibrate.py reads it
         "n_truncated": result.n_truncated,
@@ -115,11 +154,15 @@ def report(rows: Sequence[dict[str, Any]], settings: Settings, device: str) -> d
         for group in ("in_domain_unanswerable", "out_of_domain")
     }
     latencies = [row["latency_ms"] for row in rows]
+    precision5_fused, precision5_reranked = precision5_means(rows)
     return {
         "n_answerable": len(answerable),
         "n_offtopic": len(offtopic),
         "mrr10_fused": mrr_at(fused_ranks, 10),
         "mrr10_reranked": mrr_at(reranked, 10),
+        "precision5_fused": precision5_fused,
+        "precision5_reranked": precision5_reranked,
+        "page_tolerance": settings.eval.page_tolerance,
         "recall8_fused": recall_at(fused_ranks, 8),
         "recall8_reranked": recall_at(reranked, 8),
         "recall3_reranked": recall_at(reranked, 3),
@@ -173,6 +216,10 @@ def print_table(rep: dict[str, Any]) -> None:
         f"answerable n={rep['n_answerable']}, off-topic n={rep['n_offtopic']}, device {rep['device']}"
     )
     print(f"MRR@10  fused {rep['mrr10_fused']:.3f} -> reranked {rep['mrr10_reranked']:.3f}")
+    print(
+        f"Precision@5 (by page, tolerance {rep['page_tolerance']}) fused "
+        f"{rep['precision5_fused']:.3f} -> reranked {rep['precision5_reranked']:.3f}"
+    )
     print(
         f"Recall@8 fused {rep['recall8_fused']:.3f} -> reranked {rep['recall8_reranked']:.3f}; Recall@3 reranked {rep['recall3_reranked']:.3f}"
     )
