@@ -1,6 +1,7 @@
 """Done-when tests for the @stage decorator and OTLP setup. Spec Section 7.3. Issue #2."""
 
 import asyncio
+import json
 from dataclasses import dataclass
 
 import pytest
@@ -123,7 +124,7 @@ def test_attribute_and_content_limits_come_from_config() -> None:
     settings = load_settings()
     tight = settings.model_copy(
         update={"trace": settings.trace.model_copy(
-            update={"content_max_chars": 5, "attr_string_max_chars": 3})}
+            update={"content_max_chars": 5, "attr_string_max_chars": 20})}
     )
     tracing.configure_tracing(tight, exporter=exporter, force=True)
 
@@ -131,10 +132,10 @@ def test_attribute_and_content_limits_come_from_config() -> None:
     def classify(q: Query) -> str:
         return "book_question"
 
-    classify(Query("readonly properties", 1))
+    classify(Query("readonly properties are set once", 1))
 
     attrs = _only_span(exporter).attributes
-    assert attrs["rag.question_raw"] == "rea"
+    assert attrs["rag.question_raw"] == "readonly…(truncated)"  # 20 characters, marked (#29)
     assert attrs["output.value"] == "book_"
 
 
@@ -223,3 +224,68 @@ def test_logger_writes_to_the_current_stdout(capsys: pytest.CaptureFixture[str])
     assert "first" in capsys.readouterr().out
     structlog.get_logger().warning("second")
     assert "second" in capsys.readouterr().out
+
+
+
+# --------------------------------------------------------------------------- issue #29 rules
+
+
+def test_attribute_rules_sentinel_truncation_json_limit_and_lists(
+    exporter: InMemorySpanExporter,
+) -> None:
+    """Part 2: a None becomes the registry sentinel, a long text is cut and marked, a list is
+    JSON within the JSON limit, an unknown None is dropped."""
+
+    @tracing.stage("relevance.gate")
+    def gate() -> None:
+        span = tracing.current_span()
+        span.set_attribute("rag.abstain_reason", None)  # text sentinel
+        span.set_attribute("rag.chapter_hint", None)  # number sentinel
+        span.set_attribute("rag.unknown_thing", None)  # no sentinel known: dropped
+        span.set_attribute("rag.gate_reason", "x" * 1500)
+        span.set_attribute("rag.scores_all", [(f"c{i}", 0.123456) for i in range(400)])
+        span.set_attribute("guard.injection_patterns", ("a", "b"))
+
+    gate()
+    a = _only_span(exporter).attributes
+    assert a["rag.abstain_reason"] == "none" and a["rag.chapter_hint"] == -1
+    assert "rag.unknown_thing" not in a
+    assert len(a["rag.gate_reason"]) == 1000 and a["rag.gate_reason"].endswith("…(truncated)")
+    scores = json.loads(a["rag.scores_all"])  # a cut list stays valid JSON
+    assert len(a["rag.scores_all"]) <= 4000 and scores[-1] == "…(truncated)" and len(scores) > 100
+    assert a["guard.injection_patterns"] == '["a", "b"]'
+
+
+def test_content_switch_gates_every_content_attribute_through_current_span() -> None:
+    settings = load_settings()
+    off = settings.model_copy(
+        update={"trace": settings.trace.model_copy(update={"capture_content": False})}
+    )
+    exp = InMemorySpanExporter()
+    tracing.configure_tracing(off, exporter=exp, force=True)
+
+    @tracing.stage("query.understand")
+    def understand(q: Query) -> Hits:
+        span = tracing.current_span()
+        span.set_attribute("rag.question_standalone", "the rewrite")
+        span.set_attribute("retrieval.documents.0.document.content", "book text")
+        span.set_attribute("rag.n_variants", 2)
+        return Hits(["a"])
+
+    understand(Query("the question", 3))
+    a = exp.get_finished_spans()[0].attributes
+    assert "rag.question_raw" not in a  # from Query.to_attrs
+    assert "rag.question_standalone" not in a and "retrieval.documents.0.document.content" not in a
+    assert "input.value" not in a and "output.value" not in a
+    assert a["rag.n_variants"] == 2 and a["rag.top_k"] == 3
+    tracing.configure_tracing(settings, exporter=InMemorySpanExporter(), force=True)
+
+
+def test_instrumentor_config_follows_the_content_switch() -> None:
+    settings = load_settings()
+    off = settings.model_copy(
+        update={"trace": settings.trace.model_copy(update={"capture_content": False})}
+    )
+    config = tracing.instrumentor_config(off)
+    assert config.hide_inputs is True and config.hide_outputs is True
+    assert tracing.instrumentor_config(settings).hide_inputs is False

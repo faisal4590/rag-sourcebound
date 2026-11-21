@@ -125,6 +125,15 @@ def _traced(name: str, fn: Node) -> Node:
         elapsed = int((time.perf_counter() - started) * 1000)
         return {**(update or {}), "visited": [name], "timings_ms": {span_name: elapsed}}
 
+    if getattr(fn, "self_traced", False):  # the function opens the span itself (#29)
+
+        def plain(state: RagState) -> dict[str, Any]:
+            started = time.perf_counter()
+            return finish(fn(state), started)
+
+        plain.__name__ = name
+        return plain
+
     if inspect.iscoroutinefunction(fn):
 
         @stage(span_name, kind=kind)  # type: ignore[arg-type]
@@ -242,6 +251,8 @@ def default_nodes(deps: Deps) -> GraphNodes:
             fused = [c.chunk_id for c in candidates]
             out["debug_info"] = {**state.get("debug_info", {}), "retrieval": {"fused": fused}}
         return out
+
+    retrieve.self_traced = True  # type: ignore[attr-defined] - `retrieve_hybrid` is the span
 
     return GraphNodes(
         guard_input,

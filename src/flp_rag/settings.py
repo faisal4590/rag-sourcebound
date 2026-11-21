@@ -272,6 +272,8 @@ class TraceConfig(_Section):
     retention_days: int = Field(default=30, ge=0)
     content_max_chars: int = Field(default=20_000, gt=0)
     attr_string_max_chars: int = Field(default=1_000, gt=0)
+    attr_json_max_chars: int = Field(default=4_000, gt=0)  # a list or record attribute (#29)
+    max_span_attributes: int = Field(default=1_024, gt=128)  # OTel drops the oldest past this
     export_timeout_s: float = Field(default=10, gt=0)
     instrument_langchain: bool = False
 
@@ -400,10 +402,10 @@ class Settings(_Section):
     def _cross_field_rules(self) -> "Settings":
         if self.abstain_text != ABSTAIN_TEXT:
             raise ValueError(f"abstain_text must be exactly {ABSTAIN_TEXT!r}")
-        unpriced = sorted(
-            {self.gen.model, self.query.model, self.output.judge_model}
-            - set(self.prices_usd_per_million_tokens)
-        )
+        priced_models = {self.gen.model, self.query.model, self.output.judge_model}
+        if self.embed.model.startswith("text-embedding"):  # a hosted embedder is a paid call
+            priced_models.add(self.embed.model)
+        unpriced = sorted(priced_models - set(self.prices_usd_per_million_tokens))
         if unpriced:
             raise ValueError(
                 f"no price for configured model(s) {unpriced}; "
@@ -419,6 +421,11 @@ class Settings(_Section):
 
     def price_for(self, model: str) -> Price:
         return self.prices_usd_per_million_tokens[model]
+
+    def embed_price_per_million(self) -> float:
+        """USD per million input tokens of the embedder: 0 for a local model (issue #29)."""
+        price = self.prices_usd_per_million_tokens.get(self.embed.model)
+        return price.input if price is not None else 0.0
 
 
 # --------------------------------------------------------------------------- loading

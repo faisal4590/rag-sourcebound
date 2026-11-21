@@ -97,6 +97,7 @@ def make_gate(settings: Settings) -> Callable[[RagState], dict[str, Any]]:
             ("rag.tau_pass", gate.tau_pass),
             ("rag.tau_high", gate.tau_high),
             ("rag.borderline", d.borderline),
+            ("rag.abstain_reason", d.reason if d.decision == "abstain" else None),  # none on pass
         ):
             span.set_attribute(key, value)
         out: dict[str, Any] = {
@@ -116,7 +117,6 @@ def make_gate(settings: Settings) -> Callable[[RagState], dict[str, Any]]:
                 },
             }
         if d.decision == "abstain":
-            span.set_attribute("rag.abstain_reason", d.reason)
             return {
                 **out,
                 "status": "no_information",

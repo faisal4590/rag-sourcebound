@@ -1,0 +1,459 @@
+# The span registry of issue #29: the one list of every span, its kind, its parent, the request
+# paths it exists on, and its attributes. `span_registry.py` loads it; `tests/test_span_tree.py`
+# checks every path against it; `eval/trace_coverage.py` checks live traces against it;
+# `tracing.py` reads the sentinels and the content keys. Spec Sections 7.4, 7.5, 7.6 follow it.
+version: 1
+
+limits:
+  text_chars: 1000        # a `rag.*` text value is cut here and ends with the marker
+  json_chars: 4000        # a JSON attribute (list or record) is cut here
+  truncated_marker: "…(truncated)"
+
+sentinels:                # open question 2: a missing value is a sentinel, never null
+  number: -1
+  text: none
+
+# Attributes that hold user text or book text. Present only when `trace.capture_content` is
+# true (Part 6). `*.document.content` is matched by suffix. `input.value` / `output.value` are
+# on every span (the decorator), so they are listed once here, not per span.
+content_keys:
+  - input.value
+  - output.value
+  - rag.question_raw
+  - rag.question_standalone
+  - rag.variants
+  - rag.rejected_answer
+  - reranker.query
+content_suffixes:
+  - .document.content
+
+# The request paths of Part 7. `expected_spans(path)` lists the spans whose `paths` hold it.
+paths:
+  answered: an answerable question, every stage, one llm.generate
+  gate_abstain: an off-topic question, the gate abstains, no context or generation
+  smalltalk: a greeting, Stage 11 abstains before retrieval
+  repair: the first answer fails a fixed check, two llm.generate spans
+  unfaithful: the judge says not supported, the answer is withdrawn
+  generate_error: the answer model fails twice, the request errors at llm.generate
+  guard_reject: the input guard rejects the question (HTTP 400)
+  cache_hit: the semantic answer cache answers after the input guard
+  generate_abstain: the answer model abstains or its output stays invalid; the output check stops early
+
+# Attribute catalog: the type of every attribute a span may carry, and the sentinel of the ones
+# that can be missing. Types: string, int, float, number (int or float), bool, json.
+attributes:
+  rag.request_id: {type: string}
+  rag.session_id: {type: string, sentinel: none}
+  rag.index_version: {type: string, sentinel: none}
+  rag.prompt_version: {type: string}
+  rag.config_hash: {type: string}
+  rag.chunk_config_hash: {type: string}
+  rag.status: {type: string, sentinel: none}
+  rag.abstain_reason: {type: string, sentinel: none}
+  rag.latency_ms: {type: int}
+  rag.cost_usd: {type: number}
+  rag.run_tag: {type: string}
+  http.route: {type: string}
+  http.status_code: {type: int}
+  cache.hit: {type: bool}
+  cache.similarity: {type: float}
+  cache.skipped: {type: string}
+  cache.error: {type: string}
+  cache.stored: {type: string}
+  guard.chars: {type: int}
+  guard.injection_suspected: {type: bool}
+  guard.injection_patterns: {type: json}
+  guard.language: {type: string}
+  rag.understand_enabled: {type: bool}
+  rag.intent: {type: string}
+  rag.wants_code: {type: bool}
+  rag.chapter_hint: {type: int, sentinel: -1}
+  rag.n_variants: {type: int}
+  rag.history_turns_used: {type: int}
+  rag.understand_fallback: {type: bool}
+  rag.paraphrases_dropped: {type: int}
+  rag.question_raw: {type: string}
+  rag.question_standalone: {type: string}
+  rag.variants: {type: json}
+  rag.rewrite_used: {type: bool}
+  rag.attempts: {type: int}
+  rag.error: {type: string, sentinel: none}
+  gen_ai.system: {type: string}
+  gen_ai.request.model: {type: string, sentinel: none}
+  gen_ai.request.temperature: {type: number}
+  gen_ai.request.max_tokens: {type: int}
+  gen_ai.usage.input_tokens: {type: int}
+  gen_ai.usage.output_tokens: {type: int}
+  gen_ai.response.finish_reasons: {type: json}
+  rag.n_dense_hits: {type: int}
+  rag.n_sparse_hits: {type: int}
+  rag.n_fused: {type: int}
+  rag.n_siblings_added: {type: int}
+  rag.overlap_ratio: {type: number}
+  rag.top_fused_score: {type: number}
+  rag.collection: {type: string}
+  rag.sparse_enabled: {type: bool}
+  rag.sparse_model: {type: string}
+  rag.top_k: {type: int}
+  rag.n_hits: {type: int}
+  rag.n_queries: {type: int}
+  rag.hits_per_list: {type: json}
+  rag.top_score_per_list: {type: json}
+  rag.rrf_k: {type: int}
+  rag.n_in: {type: int}
+  rag.n_out: {type: int}
+  reranker.model_name: {type: string, sentinel: none}
+  reranker.top_k: {type: int}
+  rag.score_top1: {type: number}
+  rag.score_top3_mean: {type: number}
+  rag.scores_all: {type: json}
+  rag.n_truncated: {type: int}
+  rag.hint_swaps: {type: int}
+  rag.device: {type: string, sentinel: none}
+  rag.rerank_enabled: {type: bool}
+  rag.gate_decision: {type: string}
+  rag.gate_reason: {type: string}
+  rag.n_pass: {type: int}
+  rag.tau_low: {type: number}
+  rag.tau_pass: {type: number}
+  rag.tau_high: {type: number}
+  rag.borderline: {type: bool}
+  rag.n_blocks: {type: int}
+  rag.n_parents_used: {type: int}
+  rag.n_chunk_fallbacks: {type: int}
+  rag.n_skipped: {type: int}
+  rag.tokens_used: {type: int}
+  rag.truncated: {type: bool}
+  rag.source_ids: {type: json}
+  rag.context_plain_text: {type: bool}
+  rag.repair_calls: {type: int}
+  rag.rejected_answer: {type: string}
+  rag.check_result: {type: string}
+  rag.early_stop: {type: bool}
+  rag.mixed_abstain: {type: bool}
+  rag.faithfulness_sampled: {type: bool}
+  rag.repair_prompt_version: {type: string}
+  rag.failed_check: {type: string, sentinel: none}
+  rag.judge_error: {type: string, sentinel: none}
+  rag.citations_valid: {type: bool}
+  rag.code_verbatim_ok: {type: bool}
+  rag.faithful: {type: bool}
+  rag.unsupported_claims: {type: json}
+  rag.markers_found: {type: json}
+  rag.markers_unknown: {type: json}
+  rag.code_blocks: {type: int}
+  rag.code_blocks_unmatched: {type: int}
+  rag.code_check_plain_text: {type: bool}
+  rag.n_sources: {type: int}
+  rag.answer_chars: {type: int}
+  rag.session_turn: {type: string}
+  # ingestion
+  rag.doc_id: {type: string}
+  rag.git_sha: {type: string}
+  rag.duration_s: {type: number}
+  rag.result: {type: string}
+  rag.pages_total: {type: int}
+  rag.pages_parsed: {type: int}
+  rag.words_total: {type: int}
+  rag.header_words_deleted: {type: int}
+  rag.pages_without_header: {type: json}
+  rag.chapters_found: {type: int}
+  rag.glyphs_recovered: {type: int}
+  rag.already_indexed: {type: string, sentinel: none}
+  rag.output_path: {type: string}
+  rag.glyph_tables: {type: json}
+  rag.blocks_total: {type: int}
+  rag.blocks_by_type: {type: json}
+  rag.labels_dropped: {type: int}
+  rag.paragraphs_merged_across_pages: {type: int}
+  rag.code_blocks_merged_across_pages: {type: int}
+  rag.callouts_merged_across_pages: {type: int}
+  rag.rule_counts: {type: json}
+  rag.blocks_changed: {type: int}
+  rag.chars_removed: {type: json}
+  rag.chunks_total: {type: int}
+  rag.parents_total: {type: int}
+  rag.tokens_p50: {type: int}
+  rag.tokens_p95: {type: int}
+  rag.tokens_max: {type: int}
+  rag.chunks_with_code: {type: int}
+  rag.chunks_over_max: {type: int}
+  rag.chunks_under_min: {type: int}
+  rag.composition: {type: json}
+  rag.token_histogram: {type: json}
+  rag.chunks_enriched: {type: int}
+  rag.llm_calls: {type: int}
+  rag.failures: {type: int}
+  rag.vectors_total: {type: int}
+  rag.cache_hits: {type: int}
+  rag.cache_misses: {type: int}
+  rag.batches: {type: int}
+  rag.dense_dim: {type: int}
+  rag.self_retrieval_failures: {type: int}
+  rag.batch_size: {type: int}
+  rag.batch_tokens: {type: int}
+  rag.points_upserted: {type: int}
+  rag.alias_switched: {type: bool}
+  rag.chunks_stored: {type: int}
+  rag.parents_stored: {type: int}
+  rag.blocks_stored: {type: int}
+  rag.checks_passed: {type: int}
+  rag.checks_failed: {type: int}
+  rag.failed_checks: {type: json}
+  rag.smoke_hits: {type: int}
+  rag.smoke_total: {type: int}
+  rag.flags: {type: json}
+  rag.pruned: {type: json}
+
+# --------------------------------------------------------------------------- request spans
+# `paths`: the request paths on which the span exists (`all` = every path). `optional`: the
+# span exists only under a configuration or a runtime condition named in `when`; when present
+# it is checked like any other. `documents`: OpenInference document prefixes, present with at
+# least index 0 when `documents_when` holds. A span with status ERROR is checked for kind and
+# parent only: the stage raised before it could finish its attributes.
+request:
+  rag.request:
+    kind: CHAIN
+    parent: null
+    paths: all
+    required: [rag.request_id, rag.session_id, rag.index_version, rag.prompt_version,
+               rag.config_hash, rag.status, rag.abstain_reason, rag.latency_ms, rag.cost_usd,
+               cache.hit, http.route, http.status_code]
+    conditional:
+      rag.run_tag: a debug request with run_tag (issue #28)
+      cache.similarity: a cache hit (Stage 19)
+    content: [rag.question_raw]
+    source: spec 7.4; #28 run_tag; #40 cache
+  guardrails.input:
+    kind: CHAIN
+    parent: rag.request
+    paths: all
+    required: [guard.chars, guard.injection_suspected, guard.injection_patterns, guard.language]
+    source: spec 7.4; #18 injection patterns
+  cache.lookup:
+    kind: CHAIN
+    parent: rag.request
+    paths: all
+    optional: true
+    enabled_by: cache
+    when: cache.semantic_enabled is true
+    required: [cache.hit]
+    conditional:
+      cache.similarity: a hit
+      cache.skipped: the request stayed out of the cache (history, filters, judge_all, no_index)
+      cache.error: the cache file failed; the request went on as a miss
+    source: "#40 Stage 19"
+  query.understand:
+    kind: CHAIN
+    parent: rag.request
+    paths: [answered, gate_abstain, smalltalk, repair, unfaithful, generate_error, generate_abstain]
+    required: [rag.understand_enabled, rag.intent, rag.wants_code, rag.chapter_hint,
+               rag.n_variants, rag.history_turns_used, rag.understand_fallback,
+               rag.paraphrases_dropped, rag.cost_usd]
+    conditional:
+      rag.abstain_reason: smalltalk (query.smalltalk)
+    content: [rag.question_raw, rag.question_standalone, rag.variants]
+    source: spec 7.4; #27 history, fallback, paraphrases; #28 understand_enabled
+  query.classify:
+    kind: LLM
+    parent: query.understand
+    paths: [answered, gate_abstain, smalltalk, repair, unfaithful, generate_error, generate_abstain]
+    required: [gen_ai.system, gen_ai.request.model, gen_ai.request.temperature,
+               gen_ai.request.max_tokens, gen_ai.usage.input_tokens, gen_ai.usage.output_tokens,
+               gen_ai.response.finish_reasons, rag.cost_usd, rag.prompt_version, rag.rewrite_used,
+               rag.attempts, rag.error]
+    source: spec 7.4 (query.rewrite is folded into this one call, row 25 of spec-changes); #27
+  retrieval.hybrid:
+    kind: RETRIEVER
+    parent: rag.request
+    paths: [answered, gate_abstain, repair, unfaithful, generate_error, generate_abstain]
+    required: [rag.n_variants, rag.n_dense_hits, rag.n_sparse_hits, rag.n_fused,
+               rag.n_siblings_added, rag.overlap_ratio, rag.top_fused_score, rag.collection,
+               rag.sparse_enabled, rag.n_out]
+    documents: [retrieval.documents]
+    documents_when: rag.n_fused > 0
+    source: spec 7.4; #25
+  retrieval.dense:
+    kind: RETRIEVER
+    parent: retrieval.hybrid
+    paths: [answered, gate_abstain, repair, unfaithful, generate_error, generate_abstain]
+    required: [gen_ai.request.model, rag.top_k, rag.n_hits, rag.n_queries, rag.hits_per_list,
+               rag.top_score_per_list, rag.collection, rag.n_out]
+    documents: [retrieval.documents]
+    documents_when: rag.n_hits > 0
+    source: spec 7.4; #25 (the documents of the first list)
+  retrieval.sparse:
+    kind: RETRIEVER
+    parent: retrieval.hybrid
+    paths: [answered, gate_abstain, repair, unfaithful, generate_error, generate_abstain]
+    optional: true
+    enabled_by: sparse
+    when: retrieval.sparse_enabled is true
+    required: [rag.sparse_model, rag.top_k, rag.n_hits, rag.n_queries, rag.hits_per_list,
+               rag.top_score_per_list, rag.collection, rag.n_out]
+    documents: [retrieval.documents]
+    documents_when: rag.n_hits > 0
+    source: spec 7.4; #25
+  retrieval.fuse:
+    kind: CHAIN
+    parent: retrieval.hybrid
+    paths: [answered, gate_abstain, repair, unfaithful, generate_error, generate_abstain]
+    required: [rag.rrf_k, rag.n_in, rag.n_out]
+    source: spec 7.4
+  rerank:
+    kind: RERANKER
+    parent: rag.request
+    paths: [answered, gate_abstain, repair, unfaithful, generate_error, generate_abstain]
+    required: [gen_ai.request.model, reranker.model_name, reranker.top_k, rag.n_in, rag.n_out,
+               rag.score_top1, rag.score_top3_mean, rag.scores_all, rag.n_truncated,
+               rag.hint_swaps, rag.device, rag.rerank_enabled]
+    documents: [reranker.input_documents, reranker.output_documents]
+    documents_when: rag.n_in > 0
+    source: spec 7.4; #26 n_truncated, hint_swaps, device; #28 rerank_enabled; open question 3
+  relevance.gate:
+    kind: CHAIN
+    parent: rag.request
+    paths: [answered, gate_abstain, repair, unfaithful, generate_error, generate_abstain]
+    required: [rag.gate_decision, rag.gate_reason, rag.abstain_reason, rag.score_top1, rag.n_pass,
+               rag.tau_low, rag.tau_pass, rag.tau_high, rag.borderline]
+    source: spec 7.4; #19
+  context.assemble:
+    kind: CHAIN
+    parent: rag.request
+    paths: [answered, repair, unfaithful, generate_error, generate_abstain]
+    required: [rag.n_blocks, rag.n_parents_used, rag.n_chunk_fallbacks, rag.n_skipped,
+               rag.tokens_used, rag.truncated, rag.source_ids]
+    conditional:
+      rag.context_plain_text: the parent store has no blocks table (plain text fallback)
+    source: spec 7.4; #20
+  llm.generate:
+    kind: LLM
+    parent: rag.request
+    paths: [answered, repair, unfaithful, generate_error, generate_abstain]
+    required: [gen_ai.system, gen_ai.request.model, gen_ai.request.temperature,
+               gen_ai.request.max_tokens, gen_ai.usage.input_tokens, gen_ai.usage.output_tokens,
+               gen_ai.response.finish_reasons, rag.cost_usd, rag.prompt_version, rag.repair_calls,
+               rag.attempts]
+    conditional:
+      rag.abstain_reason: the model abstained or the output stayed invalid
+    content: [rag.rejected_answer]
+    source: spec 7.4; #21 attempts
+  guardrails.output:
+    kind: CHAIN
+    parent: rag.request
+    paths: [answered, repair, unfaithful, generate_abstain]
+    required: [rag.check_result, rag.early_stop, rag.mixed_abstain, rag.faithfulness_sampled,
+               rag.cost_usd, rag.repair_prompt_version, rag.abstain_reason, rag.failed_check,
+               rag.judge_error]
+    conditional:
+      rag.citations_valid: the answer was not the exact abstain text
+      rag.code_verbatim_ok: the citations passed
+      rag.faithful: the judge ran
+    content: [rag.rejected_answer]
+    source: spec 7.4; #22
+  check.citations:
+    kind: TOOL
+    parent: guardrails.output
+    paths: [answered, repair, unfaithful]
+    required: [rag.markers_found, rag.markers_unknown]
+    source: spec 7.4
+  check.code:
+    kind: TOOL
+    parent: guardrails.output
+    paths: [answered, repair, unfaithful]
+    optional: true
+    runtime: true
+    when: the citation check passed
+    required: [rag.code_blocks, rag.code_blocks_unmatched, rag.code_check_plain_text]
+    source: "#22"
+  check.faithfulness:
+    kind: LLM
+    parent: guardrails.output
+    paths: [answered, repair, unfaithful]
+    optional: true
+    runtime: true
+    when: the request is borderline, judge_all, or in the sample (output.faithfulness_sample_rate)
+    required: [gen_ai.system, gen_ai.request.model, gen_ai.usage.input_tokens,
+               gen_ai.usage.output_tokens, gen_ai.response.finish_reasons, rag.cost_usd,
+               rag.prompt_version, rag.faithful, rag.unsupported_claims, rag.faithfulness_sampled]
+    source: spec 7.4
+  response.build:
+    kind: CHAIN
+    parent: rag.request
+    paths: [answered, gate_abstain, smalltalk, repair, unfaithful, cache_hit, generate_abstain]
+    required: [rag.status, rag.n_sources, rag.answer_chars, rag.session_turn, cache.stored]
+    source: spec 7.4; #27 session_turn; #40 cache.stored
+
+# --------------------------------------------------------------------------- ingestion spans
+ingest:
+  ingest.run:
+    kind: CHAIN
+    parent: null
+    required: [rag.doc_id, rag.index_version, rag.chunk_config_hash, rag.config_hash, rag.git_sha,
+               rag.duration_s, rag.result, rag.cost_usd]
+    source: spec 7.5; Part 4 cost sum
+  ingest.parse:
+    kind: CHAIN
+    parent: ingest.run
+    required: [rag.doc_id, rag.pages_total, rag.pages_parsed, rag.words_total,
+               rag.header_words_deleted, rag.pages_without_header, rag.chapters_found,
+               rag.glyphs_recovered]
+    conditional:
+      rag.already_indexed: the PDF is already indexed and the run stops here
+      rag.output_path: a real parse (the fake parse of the tree test sets none)
+      rag.glyph_tables: a real parse
+    source: spec 7.5; glyph repair
+  ingest.structure:
+    kind: CHAIN
+    parent: ingest.run
+    required: [rag.doc_id, rag.blocks_total, rag.blocks_by_type, rag.chapters_found,
+               rag.labels_dropped, rag.paragraphs_merged_across_pages,
+               rag.code_blocks_merged_across_pages, rag.callouts_merged_across_pages]
+    source: spec 7.5; #7
+  ingest.clean:
+    kind: CHAIN
+    parent: ingest.run
+    required: [rag.doc_id, rag.rule_counts, rag.blocks_changed, rag.blocks_total, rag.chars_removed]
+    source: spec 7.5
+  ingest.chunk:
+    kind: CHAIN
+    parent: ingest.run
+    required: [rag.doc_id, rag.chunk_config_hash, rag.chunks_total, rag.parents_total,
+               rag.tokens_p50, rag.tokens_p95, rag.tokens_max, rag.chunks_with_code,
+               rag.chunks_over_max, rag.chunks_under_min, rag.composition, rag.token_histogram]
+    source: spec 7.5; #62
+  ingest.enrich:
+    kind: CHAIN
+    parent: ingest.run
+    required: [rag.doc_id, rag.index_version, rag.chunks_enriched, rag.llm_calls,
+               gen_ai.usage.input_tokens, gen_ai.usage.output_tokens, rag.cost_usd, rag.failures]
+    source: spec 7.5
+  ingest.embed:
+    kind: CHAIN
+    parent: ingest.run
+    required: [rag.doc_id, gen_ai.request.model, rag.sparse_model, rag.vectors_total,
+               rag.cache_hits, rag.cache_misses, rag.batches, rag.dense_dim,
+               rag.self_retrieval_failures]
+    source: spec 7.5
+  embed.batch:
+    kind: EMBEDDING
+    parent: ingest.embed
+    optional: true
+    runtime: true
+    when: at least one text missed the embedding cache
+    required: [gen_ai.request.model, rag.batch_size, rag.batch_tokens, rag.latency_ms, rag.cost_usd,
+               rag.n_out]
+    source: spec 7.5; Part 4 cost
+  ingest.index:
+    kind: CHAIN
+    parent: ingest.run
+    required: [rag.doc_id, rag.index_version, rag.collection, rag.points_upserted,
+               rag.alias_switched, rag.chunks_stored, rag.parents_stored, rag.blocks_stored]
+    source: spec 7.5
+  ingest.verify:
+    kind: CHAIN
+    parent: ingest.run
+    required: [rag.doc_id, rag.index_version, rag.collection, rag.checks_passed, rag.checks_failed,
+               rag.failed_checks, rag.smoke_hits, rag.smoke_total, rag.alias_switched, rag.flags,
+               rag.pruned]
+    source: spec 7.5; #62 flags

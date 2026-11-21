@@ -51,3 +51,6 @@ calibrate:     ## threshold sweep of spec 8.4, dry run; write with `flp calibrat
 
 online-judge:  ## spec 8.7: judge a 20% sample of the last day's answers, annotate the traces
 	uv run python eval/online_judge.py
+
+trace-coverage:  ## issue #29: check the traces of a tagged run against the span registry (TAG=...)
+	uv run python eval/trace_coverage.py --tag $(TAG)

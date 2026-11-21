@@ -152,7 +152,7 @@ PART_4 = {
 def test_pass_path_writes_every_attribute_and_hands_passing_candidates_on(settings) -> None:
     state, spans = run_gate(settings, [0.93, 0.5, 0.2])
     attrs = spans["relevance.gate"]
-    assert PART_4 <= set(attrs) and "rag.abstain_reason" not in attrs
+    assert PART_4 <= set(attrs) and attrs["rag.abstain_reason"] == "none"  # the sentinel (#29)
     assert attrs["rag.gate_decision"] == "pass" and attrs["rag.score_top1"] == pytest.approx(0.93)
     assert attrs["rag.n_pass"] == 2 and attrs["rag.borderline"] is False
     assert (attrs["rag.tau_low"], attrs["rag.tau_pass"], attrs["rag.tau_high"]) == (0.2, 0.35, 0.6)

@@ -26,6 +26,7 @@ RERANKER) carries `gen_ai.request.model`, `reranker.model_name`, `reranker.top_k
 from __future__ import annotations
 
 import json
+import sqlite3
 import threading
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -178,6 +179,65 @@ def stub_scores(candidates: Sequence[Candidate], top_n: int) -> list[Candidate]:
     return scored[:top_n]
 
 
+METADATA_KEYS = ("chapter_no", "section_title", "page_printed_start", "page_printed_end")
+
+
+def record_documents(
+    span: Any,
+    candidates: Sequence[Candidate],
+    kept: Sequence[Candidate],
+    *,
+    texts: Mapping[str, str] | None = None,
+) -> None:
+    """OpenInference reranker documents (issue #29 Part 5, open question 3): the fused input
+    list with its fused scores, the kept output list with its rerank scores, a small metadata
+    record each, and the display text only when `texts` is given (the content switch)."""
+    for prefix, rows, score_of in (
+        ("reranker.input_documents", candidates, lambda c: float(c.fused_score)),
+        ("reranker.output_documents", kept, lambda c: float(c.rerank_score or 0.0)),
+    ):
+        for i, c in enumerate(rows):
+            key = f"{prefix}.{i}.document"
+            span.set_attribute(f"{key}.id", c.chunk_id)
+            span.set_attribute(f"{key}.score", score_of(c))
+            metadata = {k: c.payload.get(k) for k in METADATA_KEYS if k in c.payload}
+            span.set_attribute(f"{key}.metadata", json.dumps(metadata, ensure_ascii=False))
+            if texts and c.chunk_id in texts:
+                span.set_attribute(f"{key}.content", texts[c.chunk_id])
+
+
+def display_texts(store: ParentStore, kept: Sequence[Candidate]) -> dict[str, str]:
+    found = {c.chunk_id: store.get_chunk(c.chunk_id) for c in kept}
+    return {cid: chunk.display_text for cid, chunk in found.items() if chunk is not None}
+
+
+def record_scores(
+    span: Any,
+    settings: Settings,
+    kept: Sequence[Candidate],
+    scores: Sequence[tuple[str, float]],
+    *,
+    model: str | None,
+    device: str | None,
+) -> None:
+    """The registry's rerank attributes on a branch without a model call (no candidates, or the
+    Milestone 3 stub of issue #28): zeros and sentinels, so no key is ever missing (#29)."""
+    top = [s for _, s in scores]
+    for key, value in (
+        ("gen_ai.request.model", model),
+        ("reranker.model_name", model),
+        ("reranker.top_k", settings.rerank.top_n),
+        ("rag.n_out", len(kept)),
+        ("rag.score_top1", top[0] if top else 0.0),
+        ("rag.score_top3_mean", sum(top[:3]) / len(top[:3]) if top else 0.0),
+        ("rag.scores_all", json.dumps(list(scores))),
+        ("rag.n_truncated", 0),
+        ("rag.hint_swaps", 0),
+        ("rag.device", device),
+    ):
+        span.set_attribute(key, value)
+
+
 def debug_top(kept: Sequence[Candidate]) -> list[dict[str, Any]]:
     """The kept list for the response debug field: the rank of a chapter is read from it."""
     return [{"chunk_id": c.chunk_id, "chapter_no": _chapter(c), "score": _score(c)} for c in kept]
@@ -210,24 +270,18 @@ def make_rerank(
         span.set_attribute("rag.n_in", len(candidates))
         span.set_attribute("rag.rerank_enabled", settings.rerank.enabled)
         if not candidates:  # no model call; the gate abstains with gate.no_candidates
-            span.set_attribute("rag.n_out", 0)
-            span.set_attribute("rag.score_top1", 0.0)
+            record_scores(span, settings, [], [], model=None, device=None)
             return {"candidates": []}
         if not settings.rerank.enabled:
             kept = stub_scores(candidates, settings.rerank.top_n)
-            top = [_score(c) for c in kept]
-            for key, value in (
-                ("rag.n_out", len(kept)),
-                ("rag.score_top1", top[0]),
-                ("rag.score_top3_mean", sum(top[:3]) / len(top[:3])),
-                ("rag.scores_all", json.dumps([(c.chunk_id, s) for c, s in zip(kept, top)])),
-                ("rag.device", "none"),
-            ):
-                span.set_attribute(key, value)
+            record_documents(span, candidates, kept)
+            scores = [(c.chunk_id, _score(c)) for c in kept]
+            record_scores(span, settings, kept, scores, model=None, device="none")
             return with_debug(state, {"candidates": kept}, kept)
         if store_path is None:
             raise RuntimeError("reranking needs the parent store; Deps.store_path is not set")
         rr = reranker()
+        texts: dict[str, str] = {}
         with ParentStore.open_readonly(store_path) as store:
             result = rerank(
                 question,
@@ -237,7 +291,14 @@ def make_rerank(
                 settings=settings,
                 chapter_hint=hint,
             )
+            if settings.trace.capture_content:  # trace content is best effort, never a failure
+                try:
+                    texts = display_texts(store, result.kept)
+                except sqlite3.Error as exc:
+                    span.record_exception(exc)
+                    span.set_attribute("rag.content_error", type(exc).__name__)
         top = [s for _, s in result.scores_all]
+        record_documents(span, candidates, result.kept, texts=texts)
         for key, value in (
             ("gen_ai.request.model", rr.model_name),
             ("reranker.model_name", rr.model_name),
