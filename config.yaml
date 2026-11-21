@@ -48,7 +48,19 @@ chunk:
 
 enrich:
   symbols_max: 40
-  contextual_summary: false      # Milestone 7
+  contextual_summary: false      # Milestone 7, issue #37: one small-model summary per chunk, prepended to embedding_text
+  summary_model: groq:openai/gpt-oss-20b   # Groq free tier; needs a price row like the other models
+  summary_prompt_file: prompts/enrich_v1.md
+  summary_temperature: 0
+  summary_max_output_tokens: 600 # a reasoning model's thinking counts toward it
+  summary_reasoning_effort: low  # OpenAI protocol reasoning models only
+  summary_max_words: 80          # a longer or empty output is invalid: retried, then a failure
+  summary_retry_attempts: 3      # transport errors and invalid outputs
+  summary_retry_backoff_s: 2.0   # doubles per attempt; a 429 Retry-After header wins when larger
+  summary_retry_after_max_s: 60  # a Retry-After beyond this (a daily quota) is a failure, not a wait
+  summary_pause_s: 2.0           # between model calls (not cache hits); the Groq free tier allows 30 per minute
+  summary_max_failures: 0        # chunks left without a summary before the run fails
+  summary_cache_path: data/cache/summaries.sqlite   # sha256(prompt_version + chunk_id + display_text) -> summary
   hypothetical_questions: 0      # Milestone 7
 
 embed:

@@ -1,0 +1,120 @@
+{
+  "n": 60,
+  "overall": {
+    "dense": {
+      "recall@5": 0.9833333333333333,
+      "recall@30": 1.0,
+      "mrr@10": 0.8713888888888889
+    },
+    "sparse": {
+      "recall@5": 1.0,
+      "recall@30": 1.0,
+      "mrr@10": 0.9013888888888889
+    },
+    "fused": {
+      "recall@5": 1.0,
+      "recall@30": 1.0,
+      "mrr@10": 0.9
+    }
+  },
+  "by_kind": {
+    "code": {
+      "dense": {
+        "recall@5": 1.0,
+        "recall@30": 1.0,
+        "mrr@10": 0.9615384615384616
+      },
+      "sparse": {
+        "recall@5": 1.0,
+        "recall@30": 1.0,
+        "mrr@10": 0.8269230769230769
+      },
+      "fused": {
+        "recall@5": 1.0,
+        "recall@30": 1.0,
+        "mrr@10": 0.9615384615384616
+      },
+      "n": 13
+    },
+    "comparison": {
+      "dense": {
+        "recall@5": 1.0,
+        "recall@30": 1.0,
+        "mrr@10": 0.7333333333333333
+      },
+      "sparse": {
+        "recall@5": 1.0,
+        "recall@30": 1.0,
+        "mrr@10": 0.9230769230769231
+      },
+      "fused": {
+        "recall@5": 1.0,
+        "recall@30": 1.0,
+        "mrr@10": 0.8076923076923077
+      },
+      "n": 13
+    },
+    "definition": {
+      "dense": {
+        "recall@5": 0.9545454545454546,
+        "recall@30": 1.0,
+        "mrr@10": 0.893939393939394
+      },
+      "sparse": {
+        "recall@5": 1.0,
+        "recall@30": 1.0,
+        "mrr@10": 0.9090909090909091
+      },
+      "fused": {
+        "recall@5": 1.0,
+        "recall@30": 1.0,
+        "mrr@10": 0.9318181818181818
+      },
+      "n": 22
+    },
+    "how-to": {
+      "dense": {
+        "recall@5": 1.0,
+        "recall@30": 1.0,
+        "mrr@10": 0.8819444444444445
+      },
+      "sparse": {
+        "recall@5": 1.0,
+        "recall@30": 1.0,
+        "mrr@10": 0.9444444444444445
+      },
+      "fused": {
+        "recall@5": 1.0,
+        "recall@30": 1.0,
+        "mrr@10": 0.875
+      },
+      "n": 12
+    }
+  },
+  "sign_test": {
+    "fused_vs_dense": {
+      "better": 9,
+      "worse": 3,
+      "ties": 48,
+      "p": 0.14599609375
+    },
+    "fused_vs_sparse": {
+      "better": 6,
+      "worse": 6,
+      "ties": 48,
+      "p": 1.0
+    },
+    "sparse_vs_dense": {
+      "better": 10,
+      "worse": 8,
+      "ties": 42,
+      "p": 0.8145294189453125
+    }
+  },
+  "overlap_ratio_mean": 0.45611111111111113,
+  "misses": {
+    "dense": [],
+    "sparse": [],
+    "fused": []
+  }
+}

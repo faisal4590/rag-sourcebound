@@ -430,8 +430,11 @@ ingest:
     kind: CHAIN
     parent: ingest.run
     required: [rag.doc_id, rag.index_version, rag.chunks_enriched, rag.llm_calls,
-               gen_ai.usage.input_tokens, gen_ai.usage.output_tokens, rag.cost_usd, rag.failures]
-    source: spec 7.5
+               gen_ai.usage.input_tokens, gen_ai.usage.output_tokens, rag.cost_usd, rag.failures,
+               rag.cache_hits]
+    conditional:
+      rag.prompt_version: enrich.contextual_summary is true (the enrichment prompt, issue #37)
+    source: spec 7.5; #37 summaries
   ingest.embed:
     kind: CHAIN
     parent: ingest.run
