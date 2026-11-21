@@ -164,6 +164,9 @@ output:
 
 feedback:
   enabled: true                  # Stage 18: CLI keypress and POST /feedback
+  timeout_s: 3                   # the whole write of the user_feedback score to Phoenix (issue #31)
+  missing_retry_s: 1             # Phoenix exports in batches: wait once when the trace is not there yet
+  max_comment_chars: 2000        # a longer comment is cut before it reaches the trace
 
 cache:
   semantic_enabled: false        # Milestone 7 (issue #40): true turns the answer cache on

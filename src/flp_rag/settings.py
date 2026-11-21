@@ -257,6 +257,9 @@ class OutputConfig(_Section):
 
 class FeedbackConfig(_Section):
     enabled: bool = True
+    timeout_s: float = Field(default=3.0, gt=0)  # the whole Phoenix write of POST /feedback (#31)
+    missing_retry_s: float = Field(default=1.0, ge=0)  # wait once when Phoenix lacks the trace
+    max_comment_chars: int = Field(default=2000, gt=0)
 
 
 class CacheConfig(_Section):

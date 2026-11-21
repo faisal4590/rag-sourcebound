@@ -53,6 +53,8 @@ attributes:
   rag.latency_ms: {type: int}
   rag.cost_usd: {type: number}
   rag.run_tag: {type: string}
+  rag.feedback_rating: {type: string}
+  rag.feedback_written: {type: string}
   http.route: {type: string}
   http.status_code: {type: int}
   cache.hit: {type: bool}
@@ -222,6 +224,8 @@ request:
     conditional:
       rag.run_tag: a debug request with run_tag (issue #28)
       cache.similarity: a cache hit (Stage 19)
+      rag.feedback_rating: a POST /feedback request (issue #31)
+      rag.feedback_written: a POST /feedback request (written, missing_trace, disabled, error class)
     content: [rag.question_raw]
     source: spec 7.4; #28 run_tag; #40 cache
   guardrails.input:

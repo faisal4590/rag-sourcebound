@@ -40,8 +40,10 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from langgraph.graph.state import CompiledStateGraph
 from opentelemetry.trace import Status, StatusCode
+from starlette.concurrency import run_in_threadpool
 
 from flp_rag import metrics, tracing
+from flp_rag.api import feedback as feedback_mod
 from flp_rag.api.schemas import (
     AskRequest,
     AskResponse,
@@ -337,10 +339,30 @@ def create_app(
 
     @app.post("/feedback")
     async def feedback(request: Request, body: FeedbackRequest) -> dict[str, Any]:
-        """Milestone 3 stub: accepted and logged. Milestone 5 (#31) writes the score to the trace."""
-        log.info("feedback", trace_id=body.trace_id, rating=body.rating, comment=body.comment or "")
+        """Stage 18 rule 4 (issue #31): the rating becomes the `user_feedback` score on the
+        trace it names, written to Phoenix before the answer; `feedback.enabled: false` keeps
+        the endpoint and drops the write. The counter counts every accepted rating."""
+        st: AppState = request.app.state.rag
+        span = tracing.current_span()
+        span.set_attribute("rag.feedback_rating", body.rating)
+        written = "disabled"
+        if st.settings.feedback.enabled:
+            written = await run_in_threadpool(
+                feedback_mod.write_feedback,
+                body.trace_id,
+                body.rating,
+                body.comment,
+                st.settings,
+                transport=st.deps.extra.get("phoenix_transport"),
+            )
+        span.set_attribute("rag.feedback_written", written)
+        log.info("feedback", trace=body.trace_id, rating=body.rating, written=written)
         metrics.record_feedback(body.rating)  # spec 7.7 `rag.user_feedback` (issue #30)
-        return {"ok": True, "trace_id": request.state.trace_id}
+        return {
+            "ok": True,
+            "trace_id": request.state.trace_id,
+            "recorded": written == feedback_mod.WRITTEN,
+        }
 
     @app.get("/health", response_model=HealthResponse)
     async def health(request: Request) -> HealthResponse:
