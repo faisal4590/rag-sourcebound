@@ -36,7 +36,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from flp_rag.settings import Price, Settings
 
-ChatRole = Literal["gen", "query", "judge"]
+ChatRole = Literal["gen", "query", "judge", "enrich"]
 PROVIDERS = ("anthropic", "openai", "groq", "ollama")
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"  # Groq speaks the OpenAI chat protocol
 
@@ -586,13 +586,15 @@ def _chat_spec(settings: Settings, role: ChatRole) -> tuple[str, str]:
         "gen": ("gen.model", settings.gen.model),
         "query": ("query.model", settings.query.model),
         "judge": ("output.judge_model", settings.output.judge_model),
+        "enrich": ("enrich.summary_model", settings.enrich.summary_model),
     }[role]
 
 
 def get_chat_model(
     settings: Settings, role: ChatRole, secrets: Secrets | None = None
 ) -> LangChainChat:
-    """The chat model for one role: `gen` (answers), `query` (rewrite and classify), `judge`."""
+    """The chat model for one role: `gen` (answers), `query` (rewrite and classify), `judge`,
+    `enrich` (the Stage 5 contextual summaries, issue #37)."""
     key, spec = _chat_spec(settings, role)
     try:
         provider, name = parse_model_spec(spec)
@@ -626,6 +628,7 @@ def get_chat_model(
         "gen": settings.gen.reasoning_effort,
         "judge": settings.output.judge_reasoning_effort,
         "query": settings.query.reasoning_effort,
+        "enrich": settings.enrich.summary_reasoning_effort,
     }[role]
     return LangChainChat(
         llm, model_name=spec, price=settings.price_for(spec), seed=seed, reasoning_effort=effort

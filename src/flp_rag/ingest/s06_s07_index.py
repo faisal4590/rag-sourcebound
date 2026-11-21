@@ -437,6 +437,11 @@ def build_manifest(
             "chunks_with_code": sum(1 for c in chunks if c.payload.get("has_code")),
         },
         "composition": composition,
+        "enrich": {  # issue #37: from the payload, like chunk_config_hash
+            "contextual_summary": any(c.payload.get("context_summary") for c in chunks),
+            "prompt_version": chunks[0].payload.get("enrich_prompt_version") if chunks else None,
+            "chunks_with_summary": sum(1 for c in chunks if c.payload.get("context_summary")),
+        },
         "cost_usd": 0.0,
     }
 

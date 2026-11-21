@@ -233,7 +233,7 @@ def test_chunk_config_hash_changes_with_the_ingestion_sections_only(tmp_path: Pa
 def test_chunk_config_hash_changes_with_the_ingestion_source(tmp_path: Path) -> None:
     s = load_settings()
     sections = (s.parse, s.structure, s.clean, s.chunk)
-    assert chunk_config_hash(*sections) == s.chunk_config_hash
+    assert chunk_config_hash(*sections, s.enrich) == s.chunk_config_hash
     for name in ("a", "b"):
         d = tmp_path / name
         d.mkdir()
