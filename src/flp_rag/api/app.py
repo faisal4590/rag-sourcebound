@@ -213,15 +213,26 @@ def create_app(
         tracer = tracing.get_tracer()
         with tracer.start_as_current_span(
             "rag.request", record_exception=False, set_status_on_exception=False
-        ) as span:
+        ) as raw_span:
+            span = tracing.RuledSpan(raw_span)  # the attribute rules of issue #29
             request_id = str(uuid_utils.uuid7())
-            trace_id = format(span.get_span_context().trace_id, "032x")
+            trace_id = format(raw_span.get_span_context().trace_id, "032x")
             request.state.request_id, request.state.trace_id = request_id, trace_id
             span.set_attribute("openinference.span.kind", "CHAIN")
             span.set_attribute("rag.request_id", request_id)
             span.set_attribute("http.route", request.url.path)
+            # the registry's required root attributes, with their sentinels until a handler
+            # knows better: a request that never reaches `ask` still carries every key
+            for key, value in (
+                ("rag.session_id", None),
+                ("rag.status", None),
+                ("rag.abstain_reason", None),
+                ("rag.cost_usd", 0.0),
+                ("cache.hit", False),
+            ):
+                span.set_attribute(key, value)
             if st is not None:
-                span.set_attribute("rag.index_version", st.index_version or "")
+                span.set_attribute("rag.index_version", st.index_version)
                 span.set_attribute("rag.prompt_version", st.prompt_version)
                 span.set_attribute("rag.config_hash", st.settings.config_hash)
             started = time.perf_counter()
@@ -266,8 +277,8 @@ def create_app(
     async def ask(request: Request, body: AskRequest) -> Any:
         st: AppState = request.app.state.rag
         span = tracing.current_span()
-        span.set_attribute("rag.session_id", body.session_id or "")
-        span.set_attribute("rag.question_raw", body.question[:1000])
+        span.set_attribute("rag.session_id", body.session_id)  # the sentinel without one
+        span.set_attribute("rag.question_raw", body.question)  # content: off with the switch
         run_tag = body.run_tag if body.debug else None  # Part 2 of issue #28
         if run_tag:
             span.set_attribute("rag.run_tag", run_tag)
@@ -311,7 +322,7 @@ def create_app(
             return _early_exit(state, st, exc, status, detail, reason=None)
         response = _response_from_state(final, st)
         span.set_attribute("rag.status", response.status)
-        span.set_attribute("rag.abstain_reason", final.get("abstain_reason") or "")
+        span.set_attribute("rag.abstain_reason", final.get("abstain_reason"))  # sentinel "none"
         span.set_attribute("rag.cost_usd", float(final.get("cost_usd", 0.0)))
         span.set_attribute("cache.hit", bool(final.get("cache_hit", False)))  # Stage 19
         if final.get("cache_similarity") is not None:
@@ -411,8 +422,8 @@ def _early_exit(
     )
     span = tracing.current_span()
     span.set_attribute("rag.status", "error")
-    if reason:
-        span.set_attribute("rag.abstain_reason", reason)
+    span.set_attribute("rag.abstain_reason", reason)  # the sentinel when the error has no code
+    span.set_attribute("rag.cost_usd", float(state.get("cost_usd", 0.0)))
     summary = respond_mod.summarize({**state, "abstain_reason": reason}, contract, st.settings)
     respond_mod.log_request(summary)
     out = AskResponse.from_contract(

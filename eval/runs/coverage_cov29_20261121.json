@@ -1,0 +1,77 @@
+{
+  "tag": "cov29",
+  "traces": 10,
+  "passed": 10,
+  "skipped": 1,
+  "coverage": 1.0,
+  "rows": [
+    {
+      "trace_id": "25486a0f1a3c6cff94248d8b88b3a585",
+      "path": "answered",
+      "pass": true,
+      "problems": []
+    },
+    {
+      "trace_id": "4b19681cdc761aa1ffa67508b865a157",
+      "path": "answered",
+      "pass": true,
+      "problems": []
+    },
+    {
+      "trace_id": "e9f87f6f1907386aaa2c8208b7db9287",
+      "path": "answered",
+      "pass": true,
+      "problems": []
+    },
+    {
+      "trace_id": "f8034daad0aae19315a6f222d086834f",
+      "path": null,
+      "pass": null,
+      "problems": [
+        "no registry path for status 'error' and reason 'timeout'"
+      ]
+    },
+    {
+      "trace_id": "e8653fb33046b7535747b0d67520531b",
+      "path": "answered",
+      "pass": true,
+      "problems": []
+    },
+    {
+      "trace_id": "f9e558c1235a9502af090fecffc7a135",
+      "path": "answered",
+      "pass": true,
+      "problems": []
+    },
+    {
+      "trace_id": "4838631fdbae17b217e910b85fe20cfb",
+      "path": "answered",
+      "pass": true,
+      "problems": []
+    },
+    {
+      "trace_id": "947fcb00545ccb6a1d453e04477459ad",
+      "path": "answered",
+      "pass": true,
+      "problems": []
+    },
+    {
+      "trace_id": "0f66f3225acb9c46372933e7e6c10fd3",
+      "path": "answered",
+      "pass": true,
+      "problems": []
+    },
+    {
+      "trace_id": "cc0536419973a8d83733d575c8463bd1",
+      "path": "answered",
+      "pass": true,
+      "problems": []
+    },
+    {
+      "trace_id": "b7f64ae72708edb6e638f67973db0684",
+      "path": "answered",
+      "pass": true,
+      "problems": []
+    }
+  ]
+}
